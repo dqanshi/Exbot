@@ -287,7 +287,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("status", status))
 app.add_handler(CommandHandler("delete", delete))
 
-app.add_handler(MessageHandler(filters.Document.ALL, receive_file))
+app.add_handler(MessageHandler(filters.ALL, receive_file))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, password))
 
 
