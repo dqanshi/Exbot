@@ -174,6 +174,12 @@ async def delete(client, message):
     await message.reply_text("Database deleted")
 
 
+@Client.on_message(filters.private)
+async def debug(client, message):
+    print("MESSAGE RECEIVED:", message)
+
+
+
 # -------------------
 # Run bot
 # -------------------
