@@ -83,17 +83,18 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     uid = update.effective_user.id
 
-    # store files
+    # create storage if not exists
     if uid not in user_files:
         user_files[uid] = []
 
+    # store the file path
     user_files[uid].append(path)
 
     print("FILES STORED:", user_files)
 
     await update.effective_message.reply_text(
-    f"📥 {doc.file_name} saved.\nSend more parts or run /extract"
-)
+        f"📥 {doc.file_name} saved.\nSend more parts or run /extract"
+    )
 
 
 # -----------------------
