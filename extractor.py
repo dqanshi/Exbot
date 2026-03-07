@@ -3,9 +3,6 @@ import os
 
 
 def extract_stream(archive, password=""):
-import subprocess
-
-def extract_stream(archive, password=""):
 
     cmd = [
         "7z",
