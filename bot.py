@@ -14,7 +14,7 @@ from telegram.ext import (
 from config import *
 from extractor import extract_stream
 from parser import parse_line
-from db import insert_rows
+from db import insert_rows, setup_database
 from split_detect import find_archive_start
 from state import save_state, load_state
 from security import verify_password, full_wipe
@@ -30,6 +30,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
 )
+setup_database()
 
 user_files = {}
 await_password = {}
