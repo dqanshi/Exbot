@@ -62,6 +62,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🤖 Exbot ready. Send archive files.")
 
 
+
+async def extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != OWNER_ID:
+        return
+
+    uid = update.effective_user.id
+
+    if uid not in user_files or not user_files[uid]:
+        await update.message.reply_text("❌ No archive files uploaded.")
+        return
+
+    await update.message.reply_text(
+        "📦 Archive upload confirmed.\nStarting extraction..."
+    )
+
+    await run_import(update, context)
+    
 # -----------------------
 # Receive file
 # -----------------------
@@ -243,6 +261,7 @@ async def keep_alive():
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("extract", extract))
 app.add_handler(CommandHandler("delete", delete))
 
 # File handler FIRST
