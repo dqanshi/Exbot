@@ -322,7 +322,7 @@ Rows processed: {processed:,}
 
                     last_update = processed
 
-    insert_rows(batch)
+    insert_rows(batch.copy())
 
     await status.edit_text(
         f"""
