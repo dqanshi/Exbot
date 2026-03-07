@@ -63,11 +63,18 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     print("RECEIVE_FILE TRIGGERED")
 
+    # check user
     if update.effective_user.id != OWNER_ID:
         print("WRONG USER")
         return
 
-    doc = update.effective_message.document
+    message = update.effective_message
+
+    if not message:
+        print("NO MESSAGE")
+        return
+
+    doc = message.document
 
     if not doc:
         print("NO DOCUMENT")
@@ -83,16 +90,16 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     uid = update.effective_user.id
 
-    # create storage if not exists
+    # create storage list
     if uid not in user_files:
         user_files[uid] = []
 
-    # store the file path
+    # store archive path
     user_files[uid].append(path)
 
     print("FILES STORED:", user_files)
 
-    await update.effective_message.reply_text(
+    await message.reply_text(
         f"📥 {doc.file_name} saved.\nSend more parts or run /extract"
     )
 
