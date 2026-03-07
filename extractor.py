@@ -1,15 +1,15 @@
 import subprocess
 import os
 
+
 def extract_stream(archive, password=""):
 
     cmd = [
         "7z",
-        "e",
+        "x",
         archive,
         "-so",
         "-bd",
-        "-bsp1",
         "-mmt=on"
     ]
 
