@@ -240,16 +240,14 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("delete", delete))
 
-# DEBUG HANDLER
-app.add_handler(MessageHandler(filters.ALL, debug))
-
-# FILE HANDLER
+# File handler FIRST
 app.add_handler(MessageHandler(filters.Document.ALL, receive_file))
 
-# PASSWORD HANDLER
+# Password handler
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, password))
 
-
+# Debug LAST
+app.add_handler(MessageHandler(filters.ALL, debug))
 if __name__ == "__main__":
 
     asyncio.get_event_loop().create_task(keep_alive())
