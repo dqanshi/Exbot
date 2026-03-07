@@ -1,6 +1,6 @@
 import os
 import logging
-import asyncio
+import time
 
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -20,17 +20,14 @@ from state import save_state, load_state
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 
-logging.basicConfig(
-    filename="logs/bot.log",
-    level=logging.INFO
-)
+logging.basicConfig(filename="logs/bot.log", level=logging.INFO)
 
 app = Client(
     "exbot",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
-    workers=8  # faster downloads
+    workers=16
 )
 
 user_files = {}
@@ -43,10 +40,8 @@ await_password = {}
 # -------------------------
 
 def progress_bar(percent):
-
     filled = int(percent / 5)
     bar = "█" * filled + "░" * (20 - filled)
-
     return f"{bar} {percent:.1f}%"
 
 
@@ -68,7 +63,7 @@ async def start(client, message):
 
 
 # -------------------------
-# Receive archive
+# Receive file
 # -------------------------
 
 @app.on_message(filters.private & filters.document)
@@ -84,7 +79,12 @@ async def receive_file(client, message):
 
     msg = await message.reply_text("⬇️ Preparing download...")
 
+    start_time = time.time()
+
     async def progress(current, total):
+
+        elapsed = time.time() - start_time
+        speed = current / elapsed / 1024 / 1024 if elapsed > 0 else 0
 
         percent = current * 100 / total
 
@@ -94,6 +94,7 @@ async def receive_file(client, message):
 {progress_bar(percent)}
 
 {current//1024//1024} MB / {total//1024//1024} MB
+⚡ {speed:.2f} MB/s
 """
 
         try:
@@ -111,7 +112,7 @@ async def receive_file(client, message):
 
     user_files[uid].append(path)
 
-    # Detect password from caption
+    # detect password from caption
     caption = message.caption or ""
 
     if "password" in caption.lower():
@@ -121,9 +122,9 @@ async def receive_file(client, message):
         except:
             pass
 
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("⚙ Extract", callback_data="extract")]]
-    )
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚙ Extract", callback_data="extract")]
+    ])
 
     await msg.edit_text(
         f"""✅ {doc.file_name} downloaded
