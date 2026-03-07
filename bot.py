@@ -98,25 +98,34 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     caption = update.effective_message.caption or ""
 
-    password = ""
+password = ""
 
-    if "pass" in caption.lower() or "password" in caption.lower():
-        password = caption.split(":")[-1].strip()
+caption_lower = caption.lower()
 
-    context.user_data["password"] = password
+# Detect password from caption
+if "password" in caption_lower or "pass" in caption_lower:
+    try:
+        password = caption.split("password")[-1].split(":")[-1].strip()
+    except:
+        password = ""
 
+context.user_data["password"] = password
+
+# confirm download
+await update.effective_message.reply_text(
+    f"📥 {doc.file_name} downloaded"
+)
+
+# ask password if not detected
+if password == "":
+    await_password[uid] = True
     await update.effective_message.reply_text(
-        f"📥 {doc.file_name} downloaded"
+        "🔑 Send archive password or type none"
     )
+    return
 
-    if password == "":
-        await_password[uid] = True
-        await update.effective_message.reply_text(
-            "🔑 Send archive password or type none"
-        )
-        return
-
-    await run_import(update, context)
+# start extraction
+await run_import(update, context)
 
 
 # -----------------------
