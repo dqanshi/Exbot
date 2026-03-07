@@ -91,9 +91,9 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     print("FILES STORED:", user_files)
 
-    await update.message.reply_text(
-        f"📥 {doc.file_name} saved.\nSend more parts or run /extract"
-    )
+    await update.effective_message.reply_text(
+    f"📥 {doc.file_name} saved.\nSend more parts or run /extract"
+)
 
 
 # -----------------------
@@ -113,8 +113,8 @@ async def extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No archive files uploaded.")
         return
 
-    await update.message.reply_text("⚙ Starting extraction...")
-
+    await update.effective_message.reply_text("⚙ Starting extraction...")
+    
     await run_import(update, context)
 
 
