@@ -56,11 +56,8 @@ async def start(client, message):
 # Receive archive
 # -------------------
 
-@app.on_message(filters.private & filters.incoming)
+@app.on_message(filters.private & filters.document)
 async def receive_file(client, message):
-
-    if not message.document:
-        return
 
     if message.from_user.id != OWNER_ID:
         return
