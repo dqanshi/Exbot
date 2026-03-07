@@ -44,7 +44,7 @@ await_password = {}
 # -----------------------
 
 async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("DEBUG MESSAGE:", update.message)
+    print("DEBUG:", update.message)
 
 
 # -----------------------
@@ -53,52 +53,30 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    print("START COMMAND")
-
     if update.effective_user.id != OWNER_ID:
-        print("IGNORED USER:", update.effective_user.id)
-        return
-
-    await update.message.reply_text("🤖 Exbot ready. Send archive files.")
-
-
-
-async def extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user.id != OWNER_ID:
-        return
-
-    uid = update.effective_user.id
-
-    if uid not in user_files or not user_files[uid]:
-        await update.message.reply_text("❌ No archive files uploaded.")
         return
 
     await update.message.reply_text(
-        "📦 Archive upload confirmed.\nStarting extraction..."
+        "🤖 Exbot ready.\n\n"
+        "Forward archive files.\n"
+        "When finished send /extract"
     )
 
-    await run_import(update, context)
-    
+
 # -----------------------
-# Receive file
+# Receive archive files
 # -----------------------
+
 async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     print("RECEIVE_FILE TRIGGERED")
 
-    if not update.effective_message:
-        print("NO MESSAGE")
-        return
-
     if update.effective_user.id != OWNER_ID:
-        print("WRONG OWNER")
         return
 
     doc = update.effective_message.document
 
     if not doc:
-        print("NO DOCUMENT FOUND")
         return
 
     print("FILE RECEIVED:", doc.file_name)
@@ -113,13 +91,37 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_files.setdefault(uid, []).append(path)
 
+    print("FILES RECEIVED:", user_files[uid])
+
+    await update.effective_message.reply_text(
+        f"📥 {doc.file_name} saved.\n"
+        f"Send more parts or run /extract"
+    )
+
+
+# -----------------------
+# Extract command
+# -----------------------
+
+async def extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != OWNER_ID:
+        return
+
+    uid = update.effective_user.id
+
+    if uid not in user_files or not user_files[uid]:
+        await update.message.reply_text("❌ No archive files uploaded.")
+        return
+
+    print("USER FILES:", user_files)
+
     caption = update.effective_message.caption or ""
 
     password = ""
 
     caption_lower = caption.lower()
 
-    # Detect password in caption
     if "password" in caption_lower or "pass" in caption_lower:
         try:
             password = caption.split(":")[-1].strip()
@@ -128,13 +130,9 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["password"] = password
 
-    await update.effective_message.reply_text(
-        f"📥 {doc.file_name} downloaded"
-    )
-
     if password == "":
         await_password[uid] = True
-        await update.effective_message.reply_text(
+        await update.message.reply_text(
             "🔑 Send archive password or type none"
         )
         return
@@ -179,7 +177,9 @@ async def run_import(update, context):
 
     password = context.user_data.get("password", "")
 
-    msg = await update.effective_message.reply_text("⚙ Starting extraction")
+    msg = await update.effective_message.reply_text(
+        "⚙ Starting extraction..."
+    )
 
     process = extract_stream(archive, password)
 
@@ -240,7 +240,7 @@ async def delete(update, context):
 
     full_wipe()
 
-    await update.message.reply_text("Database deleted")
+    await update.message.reply_text("🗑 Database deleted")
 
 
 # -----------------------
@@ -264,14 +264,16 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("extract", extract))
 app.add_handler(CommandHandler("delete", delete))
 
-# File handler FIRST
+# file handler first
 app.add_handler(MessageHandler(filters.Document.ALL, receive_file))
 
-# Password handler
+# password handler
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, password))
 
-# Debug LAST
+# debug last
 app.add_handler(MessageHandler(filters.ALL, debug))
+
+
 if __name__ == "__main__":
 
     asyncio.get_event_loop().create_task(keep_alive())
