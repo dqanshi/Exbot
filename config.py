@@ -3,6 +3,8 @@ import os
 BOT_TOKEN = "8718879180:AAEoHn17-OfJcOvkIB2TzC154aYzzPldYAk"
 
 OWNER_ID = 7570694792
+API_ID = 14580130
+API_HASH = "d1018b33de95b18c5afb321ad0dcee0b"
 
 DOWNLOAD_DIR = "downloads"
 LOG_DIR = "logs"
