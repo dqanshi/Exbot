@@ -1,7 +1,9 @@
 import os
 import logging
+import asyncio
 
 from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import *
 from extractor import extract_stream
@@ -9,20 +11,16 @@ from parser import parse_line
 from db import insert_rows
 from split_detect import find_archive_start
 from state import save_state, load_state
-from security import verify_password, full_wipe
 
 
-# -------------------
+# -------------------------
 # Setup
-# -------------------
+# -------------------------
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 
-logging.basicConfig(
-    filename="logs/bot.log",
-    level=logging.INFO
-)
+logging.basicConfig(filename="logs/bot.log", level=logging.INFO)
 
 app = Client(
     "exbot",
@@ -32,12 +30,25 @@ app = Client(
 )
 
 user_files = {}
-await_password = {}
 
 
-# -------------------
+# -------------------------
+# Progress bar
+# -------------------------
+
+def progress_bar(percent):
+
+    filled = int(percent / 5)
+    bar = "█" * filled + "░" * (20 - filled)
+
+    return f"""
+{bar} {percent:.1f}%
+"""
+
+
+# -------------------------
 # Start
-# -------------------
+# -------------------------
 
 @app.on_message(filters.command("start"))
 async def start(client, message):
@@ -48,13 +59,13 @@ async def start(client, message):
     await message.reply_text(
         "🤖 Exbot Ready\n\n"
         "Forward archive files\n"
-        "When finished send /extract"
+        "When finished press Extract"
     )
 
 
-# -------------------
+# -------------------------
 # Receive archive
-# -------------------
+# -------------------------
 
 @app.on_message(filters.private & filters.document)
 async def receive_file(client, message):
@@ -63,55 +74,98 @@ async def receive_file(client, message):
         return
 
     doc = message.document
+    uid = message.from_user.id
 
     print("FILE RECEIVED:", doc.file_name)
 
     path = os.path.join(DOWNLOAD_DIR, doc.file_name)
 
-    await message.download(file_name=path)
+    progress_msg = await message.reply_text("⬇️ Starting download...")
 
-    uid = message.from_user.id
+    async def progress(current, total):
+
+        percent = current * 100 / total
+
+        text = f"""
+⬇️ Downloading
+
+{progress_bar(percent)}
+
+{current//1024//1024} MB / {total//1024//1024} MB
+"""
+
+        try:
+            await progress_msg.edit_text(text)
+        except:
+            pass
+
+    await message.download(
+        file_name=path,
+        progress=progress
+    )
 
     if uid not in user_files:
         user_files[uid] = []
 
     user_files[uid].append(path)
 
-    print("FILES STORED:", user_files)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚙ Extract", callback_data="extract")]
+    ])
 
-    await message.reply_text(
-        f"📥 {doc.file_name} saved\nSend more parts or /extract"
+    await progress_msg.edit_text(
+        f"✅ {doc.file_name} downloaded\n\n"
+        f"Send more files or press Extract",
+        reply_markup=keyboard
     )
 
 
-# -------------------
-# Extract command
-# -------------------
+# -------------------------
+# Extract button
+# -------------------------
 
-@app.on_message(filters.command("extract"))
-async def extract(client, message):
+@app.on_callback_query(filters.regex("extract"))
+async def extract_button(client, callback):
 
-    if message.from_user.id != OWNER_ID:
-        return
+    message = callback.message
+    uid = callback.from_user.id
 
-    uid = message.from_user.id
-
-    if uid not in user_files or not user_files[uid]:
-        await message.reply_text("❌ No archive files uploaded")
+    if uid not in user_files:
+        await message.reply_text("❌ No files uploaded")
         return
 
     files = sorted(user_files[uid])
-
     archive = find_archive_start(files)
 
-    await message.reply_text("⚙ Starting extraction...")
+    await message.edit_text("⚙ Starting extraction...")
 
     await run_import(message, archive)
 
 
-# -------------------
-# Import pipeline
-# -------------------
+# -------------------------
+# Extract command
+# -------------------------
+
+@app.on_message(filters.command("extract"))
+async def extract_cmd(client, message):
+
+    uid = message.from_user.id
+
+    if uid not in user_files:
+        await message.reply_text("❌ No files uploaded")
+        return
+
+    files = sorted(user_files[uid])
+    archive = find_archive_start(files)
+
+    msg = await message.reply_text("⚙ Starting extraction...")
+
+    await run_import(msg, archive)
+
+
+# -------------------------
+# Extraction + DB import
+# -------------------------
 
 async def run_import(message, archive):
 
@@ -119,8 +173,11 @@ async def run_import(message, archive):
 
     batch = []
     processed = 0
+    last_update = 0
 
     resume_line = load_state()
+
+    status_msg = await message.reply_text("📦 Extracting archive...")
 
     while True:
 
@@ -129,8 +186,9 @@ async def run_import(message, archive):
         if not line:
             break
 
-        try:
+        processed += 1
 
+        try:
             row = parse_line(line)
 
             if row:
@@ -144,53 +202,32 @@ async def run_import(message, archive):
             insert_rows(batch)
             batch.clear()
 
-        processed += 1
+        if processed - last_update > 50000:
 
-        if processed % 50000 == 0:
-            save_state(processed)
+            percent = min((processed / 180000000) * 100, 100)
+
+            await status_msg.edit_text(
+                f"""
+📦 Importing dataset
+
+{progress_bar(percent)}
+
+Processed: {processed:,} rows
+"""
+            )
+
+            last_update = processed
 
     insert_rows(batch)
 
-    await message.reply_text("✅ Import completed")
+    await status_msg.edit_text(
+        f"""
+✅ Import completed
 
+Total rows processed: {processed:,}
+"""
+    )
 
-# -------------------
-# Delete command
-# -------------------
-
-@app.on_message(filters.command("delete"))
-async def delete(client, message):
-
-    if message.from_user.id != OWNER_ID:
-        return
-
-    parts = message.text.split()
-
-    if len(parts) != 2:
-        await message.reply_text("Invalid command")
-        return
-
-    if not verify_password(parts[1]):
-        await message.reply_text("Access denied")
-        return
-
-    full_wipe()
-
-    await message.reply_text("Database deleted")
-
-
-# -------------------
-# Debug messages
-# -------------------
-
-@app.on_message(filters.private)
-async def debug(client, message):
-    print("MESSAGE RECEIVED:", message)
-
-
-# -------------------
-# Run bot
-# -------------------
 
 print("EXBOT STARTED")
 
