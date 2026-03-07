@@ -50,6 +50,8 @@ def insert_rows(rows):
 
         try:
 
+            print(f"[DB] inserting batch: {len(rows)} rows")
+
             client.insert(
                 f"{CLICKHOUSE_DB}.users",
                 rows,
@@ -63,12 +65,10 @@ def insert_rows(rows):
                     "linked_usernames",
                     "extra_ids",
                     "raw_line"
-                ],
-                settings={
-                    "async_insert": 1,
-                    "wait_for_async_insert": 0
-                }
+                ]
             )
+
+            print("[DB] insert success")
 
         except Exception as e:
             print("DB ERROR:", e)
