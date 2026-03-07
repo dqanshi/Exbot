@@ -174,28 +174,26 @@ async def extract_button(client, callback):
 @app.on_message(filters.command("extract"))
 async def extract_cmd(client, message):
 
-    uid = message.from_user.id
-
-    if uid not in user_files:
-        await message.reply_text("❌ No files uploaded")
+    if message.from_user.id != OWNER_ID:
         return
 
-    if uid not in user_password:
+    files = []
 
-        await message.reply_text(
-            "🔐 Archive password required.\nSend password or type `none`"
-        )
+    for f in os.listdir(DOWNLOAD_DIR):
+        if f.endswith(".7z") or ".7z." in f or ".part" in f:
+            files.append(os.path.join(DOWNLOAD_DIR, f))
 
-        await_password[uid] = True
+    if not files:
+        await message.reply_text("❌ No archive files found in downloads")
         return
 
-    files = sorted(user_files[uid])
+    files.sort()
+
     archive = find_archive_start(files)
 
     msg = await message.reply_text("⚙ Starting extraction...")
 
-    await run_import(msg, archive, user_password.get(uid, ""))
-
+    await run_import(msg, archive)
 
 # -------------------------
 # Password input
