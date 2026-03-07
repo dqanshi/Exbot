@@ -1,6 +1,7 @@
 import os
 import re
 
+
 def is_split_archive(name):
 
     return bool(re.search(r"\.7z\.\d+$|\.part\d+\.rar$", name))
@@ -19,11 +20,13 @@ def get_base_name(name):
 
 def all_parts_present(files):
 
-    numbers=[]
+    numbers = []
 
     for f in files:
 
-        match=re.search(r"\.(\d+)$",f)
+        name = os.path.basename(f)
+
+        match = re.search(r"\.(\d+)$", name)
 
         if match:
             numbers.append(int(match.group(1)))
@@ -33,31 +36,36 @@ def all_parts_present(files):
 
     numbers.sort()
 
-    for i,n in enumerate(numbers,start=1):
+    for i, n in enumerate(numbers, start=1):
 
-        if n!=i:
+        if n != i:
             return False
 
     return True
-    
+
 
 def find_archive_start(files):
     """
     Detect first archive file in split archives
     """
 
+    if not files:
+        return None
+
     for f in files:
 
+        name = os.path.basename(f)
+
         # 7z split archives
-        if f.endswith(".001"):
+        if name.endswith(".001"):
             return f
 
         # rar split archives
-        if ".part1.rar" in f:
+        if ".part1.rar" in name:
             return f
 
         # normal archive
-        if f.endswith(".7z") or f.endswith(".rar"):
+        if name.endswith(".7z") or name.endswith(".rar"):
             return f
 
     return files[0]
