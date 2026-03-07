@@ -65,9 +65,6 @@ async def dex_cmd(client, message):
     if message.from_user.id != OWNER_ID:
         return
 
-    uid = message.from_user.id
-
-    # read password from command
     parts = message.text.split(maxsplit=1)
 
     password = ""
@@ -75,7 +72,6 @@ async def dex_cmd(client, message):
     if len(parts) > 1:
         password = parts[1].strip()
 
-    # find archive files
     files = []
 
     for f in os.listdir(DOWNLOAD_DIR):
@@ -83,7 +79,7 @@ async def dex_cmd(client, message):
             files.append(os.path.join(DOWNLOAD_DIR, f))
 
     if not files:
-        await message.reply_text("❌ No archive files found in downloads")
+        await message.reply_text("❌ No archive files found")
         return
 
     files.sort()
@@ -93,6 +89,7 @@ async def dex_cmd(client, message):
     msg = await message.reply_text("⚙ Starting extraction...")
 
     await run_import(msg, archive, password)
+    
     
 # -------------------------
 # Receive file
