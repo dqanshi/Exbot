@@ -1,159 +1,208 @@
 import os
 import logging
+import asyncio
 
-from telegram import Update
-from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters,ContextTypes
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
 from config import *
 from extractor import extract_stream
 from parser import parse_line
 from db import insert_rows
 from split_detect import find_archive_start
-from state import save_state,load_state
-from security import verify_password,full_wipe
+from state import save_state, load_state
+from security import verify_password, full_wipe
 
-os.makedirs(DOWNLOAD_DIR,exist_ok=True)
-os.makedirs(LOG_DIR,exist_ok=True)
 
+# Create folders
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Logging
 logging.basicConfig(
     filename="logs/bot.log",
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
-user_files={}
-await_password={}
+user_files = {}
+await_password = {}
+
+
+# -----------------------
+# Progress Bar
+# -----------------------
 
 def progress_bar(p):
 
-    size=20
-    filled=int(size*p/100)
+    size = 20
+    filled = int(size * p / 100)
 
-    bar="█"*filled+"░"*(size-filled)
+    bar = "█" * filled + "░" * (size - filled)
 
     return f"""
-📦 Importing dataset
+📦 Importing Dataset
 
 {bar} {p}%
 
 Processing records...
 """
 
-async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    if update.message.from_user.id!=OWNER_ID:
+# -----------------------
+# Start Menu
+# -----------------------
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.message.from_user.id != OWNER_ID:
         return
 
-    await update.message.reply_text("Forward archive files.")
+    keyboard = [
+        [InlineKeyboardButton("📦 Upload Archive", callback_data="upload")],
+        [InlineKeyboardButton("📊 Status", callback_data="status")]
+    ]
 
-async def receive_file(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        """
+🤖 **Exbot Ready**
 
-    if update.message.from_user.id!=OWNER_ID:
+Send archive files to start extraction.
+
+Supported:
+• .7z
+• .rar
+• split archives
+
+Bot will automatically extract and import data.
+""",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# -----------------------
+# Receive Archive
+# -----------------------
+
+async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.message.from_user.id != OWNER_ID:
         return
 
-    doc=update.message.document
-    file=await doc.get_file()
+    doc = update.message.document
+    file = await doc.get_file()
 
-    path=os.path.join(DOWNLOAD_DIR,doc.file_name)
+    path = os.path.join(DOWNLOAD_DIR, doc.file_name)
 
     await file.download_to_drive(path)
 
-    uid=update.message.from_user.id
+    uid = update.message.from_user.id
 
-    user_files.setdefault(uid,[]).append(path)
+    user_files.setdefault(uid, []).append(path)
 
-    caption=update.message.caption or ""
+    caption = update.message.caption or ""
 
-    password=""
+    password = ""
 
     if "pass" in caption.lower():
-        password=caption.split(":")[-1].strip()
+        password = caption.split(":")[-1].strip()
 
-    context.user_data["password"]=password
+    context.user_data["password"] = password
 
     await update.message.reply_text(
-        f"{doc.file_name} saved.\nSend all parts then /process"
+        f"📥 {doc.file_name} downloaded."
     )
 
-async def process(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    # ask password if needed
+    if context.user_data.get("password") == "":
 
-    uid=update.message.from_user.id
-
-    if uid not in user_files:
-        await update.message.reply_text("No archives uploaded")
-        return
-
-    if not context.user_data.get("password"):
-
-        await_password[uid]=True
+        await_password[uid] = True
 
         await update.message.reply_text(
-            "Send archive password or type none"
+            "🔑 Send archive password or type `none`"
         )
 
         return
 
-    await run_import(update,context)
+    await run_import(update, context)
 
-async def password(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    uid=update.message.from_user.id
+# -----------------------
+# Password Handler
+# -----------------------
+
+async def password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    uid = update.message.from_user.id
 
     if uid not in await_password:
         return
 
-    pwd=update.message.text
+    pwd = update.message.text
 
-    if pwd=="none":
-        pwd=""
+    if pwd == "none":
+        pwd = ""
 
-    context.user_data["password"]=pwd
+    context.user_data["password"] = pwd
 
     await_password.pop(uid)
 
-    await run_import(update,context)
+    await run_import(update, context)
 
-async def run_import(update,context):
 
-    uid=update.message.from_user.id
+# -----------------------
+# Import System
+# -----------------------
 
-    files=sorted(user_files[uid])
+async def run_import(update, context):
 
-    archive=find_archive_start(files)
+    uid = update.message.from_user.id
 
-    password=context.user_data.get("password","")
+    files = sorted(user_files[uid])
 
-    msg=await update.message.reply_text("Starting extraction...")
+    archive = find_archive_start(files)
 
-    process=extract_stream(archive,password)
+    password = context.user_data.get("password", "")
 
-    batch=[]
-    processed=0
-    resume_line=load_state()
+    msg = await update.message.reply_text("⚙ Starting extraction...")
+
+    process = extract_stream(archive, password)
+
+    batch = []
+    processed = 0
+
+    resume_line = load_state()
 
     while True:
 
-        line=process.stdout.readline()
+        line = process.stdout.readline()
 
         if not line:
             break
 
-        stderr_line=process.stderr.readline()
+        stderr_line = process.stderr.readline()
 
+        # progress from 7z
         if "%" in stderr_line:
             try:
-                percent=int(stderr_line.strip().replace("%",""))
+                percent = int(stderr_line.strip().replace("%", ""))
                 await msg.edit_text(progress_bar(percent))
             except:
                 pass
 
-        if processed<resume_line:
-            processed+=1
+        if processed < resume_line:
+            processed += 1
             continue
 
         try:
 
-            row=parse_line(line)
+            row = parse_line(line)
 
             if row:
                 batch.append(row)
@@ -161,28 +210,47 @@ async def run_import(update,context):
         except Exception as e:
             logging.error(f"parse error {e}")
 
-        if len(batch)>=BATCH_SIZE:
+        if len(batch) >= BATCH_SIZE:
 
             insert_rows(batch)
             batch.clear()
 
-        processed+=1
+        processed += 1
 
-        if processed%50000==0:
+        if processed % 50000 == 0:
             save_state(processed)
 
     insert_rows(batch)
 
     await msg.edit_text("✅ Import completed.")
 
-async def delete(update,context):
 
-    if update.message.from_user.id!=OWNER_ID:
+# -----------------------
+# Status Command
+# -----------------------
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.message.from_user.id != OWNER_ID:
         return
 
-    parts=update.message.text.split()
+    await update.message.reply_text(
+        "🟢 Exbot is running.\nSystem ready."
+    )
 
-    if len(parts)!=2:
+
+# -----------------------
+# Emergency Delete
+# -----------------------
+
+async def delete(update, context):
+
+    if update.message.from_user.id != OWNER_ID:
+        return
+
+    parts = update.message.text.split()
+
+    if len(parts) != 2:
         await update.message.reply_text("Invalid command")
         return
 
@@ -190,19 +258,46 @@ async def delete(update,context):
         await update.message.reply_text("Access denied")
         return
 
-    await update.message.reply_text("Deleting dataset...")
+    await update.message.reply_text("⚠ Deleting dataset...")
 
     full_wipe()
 
-    await update.message.reply_text("Dataset removed.")
+    await update.message.reply_text("🗑 Dataset removed.")
 
-app=ApplicationBuilder().token(BOT_TOKEN).build()
 
-app.add_handler(CommandHandler("start",start))
-app.add_handler(CommandHandler("process",process))
-app.add_handler(CommandHandler("delete",delete))
+# -----------------------
+# Keep Bot Alive
+# -----------------------
 
-app.add_handler(MessageHandler(filters.Document.ALL,receive_file))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,password))
+async def keep_alive():
 
-app.run_polling()
+    while True:
+        logging.info("Bot heartbeat alive")
+        await asyncio.sleep(300)
+
+
+# -----------------------
+# Main
+# -----------------------
+
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("status", status))
+app.add_handler(CommandHandler("delete", delete))
+
+app.add_handler(MessageHandler(filters.Document.ALL, receive_file))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, password))
+
+
+async def main():
+
+    asyncio.create_task(keep_alive())
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+
+
+if __name__ == "__main__":
+    app.run_polling()
