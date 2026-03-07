@@ -59,7 +59,41 @@ async def start(client, message):
         "When finished press Extract"
     )
 
+@app.on_message(filters.command("dex") & filters.private)
+async def dex_cmd(client, message):
 
+    if message.from_user.id != OWNER_ID:
+        return
+
+    uid = message.from_user.id
+
+    # read password from command
+    parts = message.text.split(maxsplit=1)
+
+    password = ""
+
+    if len(parts) > 1:
+        password = parts[1].strip()
+
+    # find archive files
+    files = []
+
+    for f in os.listdir(DOWNLOAD_DIR):
+        if ".7z" in f:
+            files.append(os.path.join(DOWNLOAD_DIR, f))
+
+    if not files:
+        await message.reply_text("❌ No archive files found in downloads")
+        return
+
+    files.sort()
+
+    archive = find_archive_start(files)
+
+    msg = await message.reply_text("⚙ Starting extraction...")
+
+    await run_import(msg, archive, password)
+    
 # -------------------------
 # Receive file
 # -------------------------
