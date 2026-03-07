@@ -21,7 +21,7 @@ from security import verify_password, full_wipe
 
 
 # -----------------------
-# Setup folders
+# Setup
 # -----------------------
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -40,15 +40,7 @@ await_password = {}
 
 
 # -----------------------
-# Debug handler
-# -----------------------
-
-async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("DEBUG:", update.message)
-
-
-# -----------------------
-# Start command
+# Start
 # -----------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,7 +56,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # -----------------------
-# Receive archive files
+# Receive files
 # -----------------------
 
 async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -89,13 +81,15 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     uid = update.effective_user.id
 
-    user_files.setdefault(uid, []).append(path)
+    if uid not in user_files:
+        user_files[uid] = []
+
+    user_files[uid].append(path)
 
     print("FILES RECEIVED:", user_files[uid])
 
-    await update.effective_message.reply_text(
-        f"📥 {doc.file_name} saved.\n"
-        f"Send more parts or run /extract"
+    await update.message.reply_text(
+        f"📥 {doc.file_name} saved.\nSend more parts or run /extract"
     )
 
 
@@ -110,55 +104,13 @@ async def extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     uid = update.effective_user.id
 
-    if uid not in user_files or not user_files[uid]:
+    print("USER FILES:", user_files)
+
+    if uid not in user_files or len(user_files[uid]) == 0:
         await update.message.reply_text("❌ No archive files uploaded.")
         return
 
-    print("USER FILES:", user_files)
-
-    caption = update.effective_message.caption or ""
-
-    password = ""
-
-    caption_lower = caption.lower()
-
-    if "password" in caption_lower or "pass" in caption_lower:
-        try:
-            password = caption.split(":")[-1].strip()
-        except:
-            password = ""
-
-    context.user_data["password"] = password
-
-    if password == "":
-        await_password[uid] = True
-        await update.message.reply_text(
-            "🔑 Send archive password or type none"
-        )
-        return
-
-    await run_import(update, context)
-
-
-# -----------------------
-# Password handler
-# -----------------------
-
-async def password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    uid = update.effective_user.id
-
-    if uid not in await_password:
-        return
-
-    pwd = update.message.text
-
-    if pwd == "none":
-        pwd = ""
-
-    context.user_data["password"] = pwd
-
-    await_password.pop(uid)
+    await update.message.reply_text("⚙ Starting extraction...")
 
     await run_import(update, context)
 
@@ -177,9 +129,7 @@ async def run_import(update, context):
 
     password = context.user_data.get("password", "")
 
-    msg = await update.effective_message.reply_text(
-        "⚙ Starting extraction..."
-    )
+    msg = await update.message.reply_text("📦 Extracting archive...")
 
     process = extract_stream(archive, password)
 
@@ -220,7 +170,7 @@ async def run_import(update, context):
 
 
 # -----------------------
-# Delete command
+# Delete database
 # -----------------------
 
 async def delete(update, context):
@@ -264,14 +214,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("extract", extract))
 app.add_handler(CommandHandler("delete", delete))
 
-# file handler first
 app.add_handler(MessageHandler(filters.Document.ALL, receive_file))
-
-# password handler
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, password))
-
-# debug last
-app.add_handler(MessageHandler(filters.ALL, debug))
 
 
 if __name__ == "__main__":
