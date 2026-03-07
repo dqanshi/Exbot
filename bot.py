@@ -61,7 +61,32 @@ async def start(client, message):
         "When finished press Extract"
     )
 
+@app.on_message(filters.command("dex"))
+async def dex_cmd(client, message):
 
+    if message.from_user.id != OWNER_ID:
+        return
+
+    files = []
+
+    # find archives in downloads folder
+    for f in os.listdir(DOWNLOAD_DIR):
+
+        if ".7z" in f:
+            files.append(os.path.join(DOWNLOAD_DIR, f))
+
+    if not files:
+        await message.reply_text("❌ No archive files found in downloads")
+        return
+
+    files.sort()
+
+    archive = find_archive_start(files)
+
+    await message.reply_text("⚙ Starting database extraction...")
+
+    await run_import(message, archive)
+    
 # -------------------------
 # Receive file
 # -------------------------
@@ -229,55 +254,100 @@ async def password_handler(client, message):
 
 async def run_import(message, archive, password=""):
 
+    status = await message.reply_text("📦 Extracting archive...")
+
     process = extract_stream(archive, password)
+
+    first_line = process.stdout.readline()
 
     batch = []
     processed = 0
     last_update = 0
 
-    status = await message.reply_text("📦 Extracting archive...")
+    # STREAM MODE (fastest)
+    if first_line:
 
-    resume_line = load_state()
+        line = first_line
 
-    while True:
+        while True:
 
-        line = process.stdout.readline()
+            if not line:
+                break
 
-        if not line:
-            break
+            processed += 1
 
-        processed += 1
+            try:
+                row = parse_line(line)
 
-        try:
+                if row:
+                    batch.append(row)
 
-            row = parse_line(line)
+            except Exception as e:
+                logging.error(e)
 
-            if row:
-                batch.append(row)
+            if len(batch) >= BATCH_SIZE:
+                insert_rows(batch)
+                batch.clear()
 
-        except Exception as e:
-            logging.error(e)
+            if processed - last_update > 50000:
 
-        if len(batch) >= BATCH_SIZE:
+                percent = min((processed / 180000000) * 100, 100)
 
-            insert_rows(batch)
-            batch.clear()
-
-        if processed - last_update > 50000:
-
-            percent = min((processed / 180000000) * 100, 100)
-
-            await status.edit_text(
-                f"""
+                await status.edit_text(
+                    f"""
 📦 Importing dataset
 
 {progress_bar(percent)}
 
 Rows processed: {processed:,}
 """
-            )
+                )
 
-            last_update = processed
+                last_update = processed
+
+            line = process.stdout.readline()
+
+    # FALLBACK MODE (extract to disk)
+    else:
+
+        await status.edit_text("⚠ Streaming failed. Extracting to disk...")
+
+        filepath = extract_to_disk(archive, password)
+
+        with open(filepath, "r", errors="ignore") as f:
+
+            for line in f:
+
+                processed += 1
+
+                try:
+                    row = parse_line(line)
+
+                    if row:
+                        batch.append(row)
+
+                except Exception as e:
+                    logging.error(e)
+
+                if len(batch) >= BATCH_SIZE:
+                    insert_rows(batch)
+                    batch.clear()
+
+                if processed - last_update > 50000:
+
+                    percent = min((processed / 180000000) * 100, 100)
+
+                    await status.edit_text(
+                        f"""
+📦 Importing dataset
+
+{progress_bar(percent)}
+
+Rows processed: {processed:,}
+"""
+                    )
+
+                    last_update = processed
 
     insert_rows(batch)
 
