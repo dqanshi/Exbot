@@ -1,24 +1,26 @@
 import subprocess
 
-def extract_stream(archive,password=""):
+def extract_stream(archive, password=""):
 
-    cmd=[
+    cmd = [
         "7z",
-        "x",
+        "e",          # extract files only
         archive,
-        "-so",
-        "-bsp1",
-        "-mmt=on"
+        "-so",        # stream output
+        "-bd",        # disable progress
+        "-bsp1",      # progress to stderr
+        "-mmt=on"     # multi-thread
     ]
 
     if password:
         cmd.append(f"-p{password}")
 
-    process=subprocess.Popen(
+    process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        bufsize=1
     )
 
     return process
