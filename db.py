@@ -3,9 +3,13 @@ import clickhouse_connect
 from config import CLICKHOUSE_HOST, CLICKHOUSE_DB
 
 
-# connect without selecting DB first
-client = clickhouse_connect.get_client(host=CLICKHOUSE_HOST)
+# connect directly to database
+client = clickhouse_connect.get_client(
+    host=CLICKHOUSE_HOST,
+    database=CLICKHOUSE_DB
+)
 
+# parallel insert workers
 executor = ThreadPoolExecutor(max_workers=4)
 
 
@@ -16,25 +20,25 @@ def setup_database():
 
     # create table
     client.command(f"""
-CREATE TABLE IF NOT EXISTS {CLICKHOUSE_DB}.users
-(
-    user_id UInt64,
+    CREATE TABLE IF NOT EXISTS {CLICKHOUSE_DB}.users
+    (
+        user_id UInt64,
 
-    username String,
-    first_name String,
-    last_name String,
+        username String,
+        first_name String,
+        last_name String,
 
-    phone String,
-    status String,
+        phone String,
+        status String,
 
-    linked_usernames Array(String),
-    extra_ids Array(UInt64),
+        linked_usernames Array(String),
+        extra_ids Array(UInt64),
 
-    raw_line String
-)
-ENGINE = MergeTree()
-ORDER BY user_id
-""")
+        raw_line String
+    )
+    ENGINE = MergeTree()
+    ORDER BY user_id
+    """)
 
 
 def insert_rows(rows):
@@ -45,6 +49,7 @@ def insert_rows(rows):
     def task():
 
         try:
+
             client.insert(
                 f"{CLICKHOUSE_DB}.users",
                 rows,
@@ -58,7 +63,11 @@ def insert_rows(rows):
                     "linked_usernames",
                     "extra_ids",
                     "raw_line"
-                ]
+                ],
+                settings={
+                    "async_insert": 1,
+                    "wait_for_async_insert": 0
+                }
             )
 
         except Exception as e:
