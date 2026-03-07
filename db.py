@@ -16,25 +16,25 @@ def setup_database():
 
     # create table
     client.command(f"""
-    CREATE TABLE IF NOT EXISTS {CLICKHOUSE_DB}.users
-    (
-        user_id UInt64,
+CREATE TABLE IF NOT EXISTS {CLICKHOUSE_DB}.users
+(
+    user_id UInt64,
 
-        username LowCardinality(String),
-        first_name String CODEC(ZSTD(3)),
-        last_name String CODEC(ZSTD(3)),
+    username String,
+    first_name String,
+    last_name String,
 
-        phone String CODEC(ZSTD(3)),
-        status LowCardinality(String),
+    phone String,
+    status String,
 
-        linked_usernames Array(String) CODEC(ZSTD(3)),
-        extra_ids Array(UInt64),
+    linked_usernames Array(String),
+    extra_ids Array(UInt64),
 
-        raw_line String CODEC(ZSTD(5))
-    )
-    ENGINE = MergeTree()
-    ORDER BY user_id
-    """)
+    raw_line String
+)
+ENGINE = MergeTree()
+ORDER BY user_id
+""")
 
 
 def insert_rows(rows):
