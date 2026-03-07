@@ -21,7 +21,7 @@ from security import verify_password, full_wipe
 
 
 # -----------------------
-# Setup
+# Setup folders
 # -----------------------
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -35,12 +35,12 @@ logging.basicConfig(
 
 setup_database()
 
+# store uploaded files
 user_files = {}
-await_password = {}
 
 
 # -----------------------
-# Start
+# Start command
 # -----------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,11 +64,13 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("RECEIVE_FILE TRIGGERED")
 
     if update.effective_user.id != OWNER_ID:
+        print("WRONG USER")
         return
 
     doc = update.effective_message.document
 
     if not doc:
+        print("NO DOCUMENT")
         return
 
     print("FILE RECEIVED:", doc.file_name)
@@ -81,12 +83,13 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     uid = update.effective_user.id
 
+    # store files
     if uid not in user_files:
         user_files[uid] = []
 
     user_files[uid].append(path)
 
-    print("FILES RECEIVED:", user_files[uid])
+    print("FILES STORED:", user_files)
 
     await update.message.reply_text(
         f"📥 {doc.file_name} saved.\nSend more parts or run /extract"
@@ -125,6 +128,7 @@ async def run_import(update, context):
 
     files = sorted(user_files[uid])
 
+    # detect first archive part
     archive = find_archive_start(files)
 
     password = context.user_data.get("password", "")
@@ -214,6 +218,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("extract", extract))
 app.add_handler(CommandHandler("delete", delete))
 
+# file handler
 app.add_handler(MessageHandler(filters.Document.ALL, receive_file))
 
 
