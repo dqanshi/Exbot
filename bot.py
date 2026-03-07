@@ -1,7 +1,7 @@
 import os
 import logging
 
-from kurigram import Client, filters
+from pyrogram import Client, filters
 
 from config import *
 from extractor import extract_stream
