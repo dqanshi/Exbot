@@ -93,7 +93,14 @@ Bot will automatically extract and import data.
 
 async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    if not update.message:
+        return
+
     if update.message.from_user.id != OWNER_ID:
+        return
+
+    # ignore messages that are not files
+    if not update.message.document:
         return
 
     doc = update.message.document
@@ -122,16 +129,15 @@ async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ask password if needed
     if context.user_data.get("password") == "":
-
         await_password[uid] = True
 
         await update.message.reply_text(
-            "🔑 Send archive password or type `none`"
+            "🔑 Send archive password or type none"
         )
-
         return
 
     await run_import(update, context)
+    
 
 
 # -----------------------
