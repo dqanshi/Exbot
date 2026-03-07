@@ -1,0 +1,208 @@
+import os
+import logging
+
+from telegram import Update
+from telegram.ext import ApplicationBuilder,CommandHandler,MessageHandler,filters,ContextTypes
+
+from config import *
+from extractor import extract_stream
+from parser import parse_line
+from db import insert_rows
+from split_detect import find_archive_start
+from state import save_state,load_state
+from security import verify_password,full_wipe
+
+os.makedirs(DOWNLOAD_DIR,exist_ok=True)
+os.makedirs(LOG_DIR,exist_ok=True)
+
+logging.basicConfig(
+    filename="logs/bot.log",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
+
+user_files={}
+await_password={}
+
+def progress_bar(p):
+
+    size=20
+    filled=int(size*p/100)
+
+    bar="█"*filled+"░"*(size-filled)
+
+    return f"""
+📦 Importing dataset
+
+{bar} {p}%
+
+Processing records...
+"""
+
+async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    if update.message.from_user.id!=OWNER_ID:
+        return
+
+    await update.message.reply_text("Forward archive files.")
+
+async def receive_file(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    if update.message.from_user.id!=OWNER_ID:
+        return
+
+    doc=update.message.document
+    file=await doc.get_file()
+
+    path=os.path.join(DOWNLOAD_DIR,doc.file_name)
+
+    await file.download_to_drive(path)
+
+    uid=update.message.from_user.id
+
+    user_files.setdefault(uid,[]).append(path)
+
+    caption=update.message.caption or ""
+
+    password=""
+
+    if "pass" in caption.lower():
+        password=caption.split(":")[-1].strip()
+
+    context.user_data["password"]=password
+
+    await update.message.reply_text(
+        f"{doc.file_name} saved.\nSend all parts then /process"
+    )
+
+async def process(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    uid=update.message.from_user.id
+
+    if uid not in user_files:
+        await update.message.reply_text("No archives uploaded")
+        return
+
+    if not context.user_data.get("password"):
+
+        await_password[uid]=True
+
+        await update.message.reply_text(
+            "Send archive password or type none"
+        )
+
+        return
+
+    await run_import(update,context)
+
+async def password(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    uid=update.message.from_user.id
+
+    if uid not in await_password:
+        return
+
+    pwd=update.message.text
+
+    if pwd=="none":
+        pwd=""
+
+    context.user_data["password"]=pwd
+
+    await_password.pop(uid)
+
+    await run_import(update,context)
+
+async def run_import(update,context):
+
+    uid=update.message.from_user.id
+
+    files=sorted(user_files[uid])
+
+    archive=find_archive_start(files)
+
+    password=context.user_data.get("password","")
+
+    msg=await update.message.reply_text("Starting extraction...")
+
+    process=extract_stream(archive,password)
+
+    batch=[]
+    processed=0
+    resume_line=load_state()
+
+    while True:
+
+        line=process.stdout.readline()
+
+        if not line:
+            break
+
+        stderr_line=process.stderr.readline()
+
+        if "%" in stderr_line:
+            try:
+                percent=int(stderr_line.strip().replace("%",""))
+                await msg.edit_text(progress_bar(percent))
+            except:
+                pass
+
+        if processed<resume_line:
+            processed+=1
+            continue
+
+        try:
+
+            row=parse_line(line)
+
+            if row:
+                batch.append(row)
+
+        except Exception as e:
+            logging.error(f"parse error {e}")
+
+        if len(batch)>=BATCH_SIZE:
+
+            insert_rows(batch)
+            batch.clear()
+
+        processed+=1
+
+        if processed%50000==0:
+            save_state(processed)
+
+    insert_rows(batch)
+
+    await msg.edit_text("✅ Import completed.")
+
+async def delete(update,context):
+
+    if update.message.from_user.id!=OWNER_ID:
+        return
+
+    parts=update.message.text.split()
+
+    if len(parts)!=2:
+        await update.message.reply_text("Invalid command")
+        return
+
+    if not verify_password(parts[1]):
+        await update.message.reply_text("Access denied")
+        return
+
+    await update.message.reply_text("Deleting dataset...")
+
+    full_wipe()
+
+    await update.message.reply_text("Dataset removed.")
+
+app=ApplicationBuilder().token(BOT_TOKEN).build()
+
+app.add_handler(CommandHandler("start",start))
+app.add_handler(CommandHandler("process",process))
+app.add_handler(CommandHandler("delete",delete))
+
+app.add_handler(MessageHandler(filters.Document.ALL,receive_file))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,password))
+
+app.run_polling()
