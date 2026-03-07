@@ -231,11 +231,14 @@ async def run_import(message, archive, password=""):
 
     process = extract_stream(archive, password)
 
-    first_line = process.stdout.readline()
-
     batch = []
     processed = 0
     last_update = 0
+
+    BATCH = BATCH_SIZE
+
+    # Read first line to detect streaming
+    first_line = process.stdout.readline()
 
     # STREAM MODE
     if first_line:
@@ -258,29 +261,34 @@ async def run_import(message, archive, password=""):
             except Exception as e:
                 logging.error(e)
 
-            if len(batch) >= BATCH_SIZE:
-                insert_rows(batch)
+            # insert batch
+            if len(batch) >= BATCH:
+                insert_rows(batch.copy())
                 batch.clear()
 
-            if processed - last_update > 50000:
+            # update progress every 50k rows
+            if processed - last_update >= 50000:
 
                 percent = min((processed / 182000000) * 100, 100)
 
-                await status.edit_text(
-                    f"""
+                try:
+                    await status.edit_text(
+                        f"""
 📦 Importing dataset
 
 {progress_bar(percent)}
 
 Rows processed: {processed:,}
 """
-                )
+                    )
+                except:
+                    pass
 
                 last_update = processed
 
             line = process.stdout.readline()
 
-    # FALLBACK MODE
+    # FALLBACK MODE (extract to disk)
     else:
 
         await status.edit_text("⚠ Streaming failed. Extracting to disk...")
@@ -302,27 +310,32 @@ Rows processed: {processed:,}
                 except Exception as e:
                     logging.error(e)
 
-                if len(batch) >= BATCH_SIZE:
-                    insert_rows(batch)
+                if len(batch) >= BATCH:
+                    insert_rows(batch.copy())
                     batch.clear()
 
-                if processed - last_update > 50000:
+                if processed - last_update >= 50000:
 
                     percent = min((processed / 182000000) * 100, 100)
 
-                    await status.edit_text(
-                        f"""
+                    try:
+                        await status.edit_text(
+                            f"""
 📦 Importing dataset
 
 {progress_bar(percent)}
 
 Rows processed: {processed:,}
 """
-                    )
+                        )
+                    except:
+                        pass
 
                     last_update = processed
 
-    insert_rows(batch.copy())
+    # Insert remaining rows
+    if batch:
+        insert_rows(batch.copy())
 
     await status.edit_text(
         f"""
