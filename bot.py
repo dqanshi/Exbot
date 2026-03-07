@@ -49,8 +49,11 @@ async def start(client, message):
 # Receive archive
 # -------------------
 
-@Client.on_message(filters.document)
+@Client.on_message(filters.private & filters.incoming)
 async def receive_file(client, message):
+
+    if not message.document:
+        return
 
     if message.from_user.id != OWNER_ID:
         return
@@ -73,10 +76,8 @@ async def receive_file(client, message):
     print("FILES STORED:", user_files)
 
     await message.reply_text(
-        f"📥 {doc.file_name} saved\n"
-        "Send more parts or /extract"
+        f"📥 {doc.file_name} saved\nSend more parts or /extract"
     )
-
 
 # -------------------
 # Extract command
