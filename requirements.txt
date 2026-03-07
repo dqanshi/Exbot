@@ -1,3 +1,4 @@
 kurigram
 clickhouse-connect
 psutil
+tgcrypto
