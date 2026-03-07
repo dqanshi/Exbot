@@ -6,21 +6,19 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import *
-from extractor import extract_stream
+from extractor import extract_stream, extract_to_disk
 from parser import parse_line
 from db import insert_rows
 from split_detect import find_archive_start
-from state import save_state, load_state
 
-
-# -------------------------
-# Setup
-# -------------------------
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 
-logging.basicConfig(filename="logs/bot.log", level=logging.INFO)
+logging.basicConfig(
+    filename="logs/bot.log",
+    level=logging.INFO
+)
 
 app = Client(
     "exbot",
@@ -62,53 +60,6 @@ async def start(client, message):
     )
 
 
-@app.on_message(filters.command("dex"))
-@app.on_message(filters.command("dex"))
-async def dex_cmd(client, message):
-
-    if message.from_user.id != OWNER_ID:
-        return
-
-    files = []
-
-    for f in os.listdir(DOWNLOAD_DIR):
-        if ".7z" in f:
-            files.append(os.path.join(DOWNLOAD_DIR, f))
-
-    if not files:
-        await message.reply_text("❌ No archive files found")
-        return
-
-    files.sort()
-
-    archive = find_archive_start(files)
-
-    await_password[message.from_user.id] = archive
-
-    await message.reply_text(
-        "🔐 Send archive password or type `none`"
-    )
-
-@app.on_message(filters.private & filters.text)
-async def password_input(client, message):
-
-    uid = message.from_user.id
-
-    if uid not in await_password:
-        return
-
-    archive = await_password.pop(uid)
-
-    password = message.text
-
-    if password.lower() == "none":
-        password = ""
-
-    await message.reply_text("📦 Starting extraction...")
-
-    await run_import(message, archive, password)
-
-
 # -------------------------
 # Receive file
 # -------------------------
@@ -132,7 +83,6 @@ async def receive_file(client, message):
 
         elapsed = time.time() - start_time
         speed = current / elapsed / 1024 / 1024 if elapsed > 0 else 0
-
         percent = current * 100 / total
 
         text = f"""
@@ -159,19 +109,9 @@ async def receive_file(client, message):
 
     user_files[uid].append(path)
 
-    # detect password from caption
-    caption = message.caption or ""
-
-    if "password" in caption.lower():
-        try:
-            pwd = caption.split(":")[-1].strip()
-            user_password[uid] = pwd
-        except:
-            pass
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚙ Extract", callback_data="extract")]
-    ])
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("⚙ Extract", callback_data="extract")]]
+    )
 
     await msg.edit_text(
         f"""✅ {doc.file_name} downloaded
@@ -191,56 +131,17 @@ Send more files or press Extract""",
 async def extract_button(client, callback):
 
     uid = callback.from_user.id
-    message = callback.message
 
     if uid not in user_files:
-        await message.reply_text("❌ No files uploaded")
+        await callback.message.reply_text("❌ No files uploaded")
         return
 
-    if uid not in user_password:
+    await_password[uid] = True
 
-        await message.reply_text(
-            "🔐 Archive password required.\nSend password or type `none`"
-        )
+    await callback.message.reply_text(
+        "🔐 Send archive password or type `none`"
+    )
 
-        await_password[uid] = True
-        return
-
-    files = sorted(user_files[uid])
-    archive = find_archive_start(files)
-
-    await message.edit_text("⚙ Starting extraction...")
-
-    await run_import(message, archive, user_password.get(uid, ""))
-
-
-# -------------------------
-# Extract command
-# -------------------------
-
-@app.on_message(filters.command("extract"))
-async def extract_cmd(client, message):
-
-    if message.from_user.id != OWNER_ID:
-        return
-
-    files = []
-
-    for f in os.listdir(DOWNLOAD_DIR):
-        if f.endswith(".7z") or ".7z." in f or ".part" in f:
-            files.append(os.path.join(DOWNLOAD_DIR, f))
-
-    if not files:
-        await message.reply_text("❌ No archive files found in downloads")
-        return
-
-    files.sort()
-
-    archive = find_archive_start(files)
-
-    msg = await message.reply_text("⚙ Starting extraction...")
-
-    await run_import(msg, archive)
 
 # -------------------------
 # Password input
@@ -271,7 +172,7 @@ async def password_handler(client, message):
 
 
 # -------------------------
-# Extraction + DB import
+# Extraction + Import
 # -------------------------
 
 async def run_import(message, archive, password=""):
@@ -286,7 +187,7 @@ async def run_import(message, archive, password=""):
     processed = 0
     last_update = 0
 
-    # STREAM MODE (fastest)
+    # STREAM MODE
     if first_line:
 
         line = first_line
@@ -313,7 +214,7 @@ async def run_import(message, archive, password=""):
 
             if processed - last_update > 50000:
 
-                percent = min((processed / 180000000) * 100, 100)
+                percent = min((processed / 182000000) * 100, 100)
 
                 await status.edit_text(
                     f"""
@@ -329,7 +230,7 @@ Rows processed: {processed:,}
 
             line = process.stdout.readline()
 
-    # FALLBACK MODE (extract to disk)
+    # FALLBACK MODE
     else:
 
         await status.edit_text("⚠ Streaming failed. Extracting to disk...")
@@ -357,7 +258,7 @@ Rows processed: {processed:,}
 
                 if processed - last_update > 50000:
 
-                    percent = min((processed / 180000000) * 100, 100)
+                    percent = min((processed / 182000000) * 100, 100)
 
                     await status.edit_text(
                         f"""
