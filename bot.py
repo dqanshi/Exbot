@@ -1,156 +1,115 @@
 import os
-import json
 import logging
-import asyncio
 
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
-)
+from kurigram import Client, filters
 
 from config import *
 from extractor import extract_stream
 from parser import parse_line
-from db import insert_rows, setup_database
+from db import insert_rows
 from split_detect import find_archive_start
 from state import save_state, load_state
 from security import verify_password, full_wipe
 
 
-# -----------------------
+# -------------------
 # Setup
-# -----------------------
+# -------------------
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 
-FILES_DB = "uploaded_files.json"
-
 logging.basicConfig(
     filename="logs/bot.log",
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
+    level=logging.INFO
 )
 
-setup_database()
+user_files = {}
+await_password = {}
 
 
-# -----------------------
-# helpers
-# -----------------------
+# -------------------
+# Start
+# -------------------
 
-def load_files():
-    if not os.path.exists(FILES_DB):
-        return {}
-    with open(FILES_DB, "r") as f:
-        return json.load(f)
+@Client.on_message(filters.command("start"))
+async def start(client, message):
 
-
-def save_files(data):
-    with open(FILES_DB, "w") as f:
-        json.dump(data, f)
-
-
-# -----------------------
-# start
-# -----------------------
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user.id != OWNER_ID:
+    if message.from_user.id != OWNER_ID:
         return
 
-    await update.effective_message.reply_text(
-        "🤖 Exbot ready\n\n"
-        "Forward archive files.\n"
-        "Then send /extract"
+    await message.reply_text(
+        "🤖 Exbot Ready\n\n"
+        "Forward archive files\n"
+        "When finished send /extract"
     )
 
 
-# -----------------------
-# receive file
-# -----------------------
+# -------------------
+# Receive archive
+# -------------------
 
-async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@Client.on_message(filters.document)
+async def receive_file(client, message):
 
-    print("RECEIVE_FILE TRIGGERED")
-
-    if update.effective_user.id != OWNER_ID:
+    if message.from_user.id != OWNER_ID:
         return
 
-    message = update.effective_message
     doc = message.document
-
-    if not doc:
-        return
 
     print("FILE RECEIVED:", doc.file_name)
 
-    file = await doc.get_file()
-
     path = os.path.join(DOWNLOAD_DIR, doc.file_name)
 
-    await file.download_to_drive(path)
+    await message.download(file_name=path)
 
-    uid = str(update.effective_user.id)
+    uid = message.from_user.id
 
-    files = load_files()
+    if uid not in user_files:
+        user_files[uid] = []
 
-    if uid not in files:
-        files[uid] = []
+    user_files[uid].append(path)
 
-    files[uid].append(path)
-
-    save_files(files)
-
-    print("FILES STORED:", files)
+    print("FILES STORED:", user_files)
 
     await message.reply_text(
         f"📥 {doc.file_name} saved\n"
-        f"Send more parts or /extract"
+        "Send more parts or /extract"
     )
 
 
-# -----------------------
-# extract command
-# -----------------------
+# -------------------
+# Extract command
+# -------------------
 
-async def extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@Client.on_message(filters.command("extract"))
+async def extract(client, message):
 
-    uid = str(update.effective_user.id)
-
-    files = load_files()
-
-    print("USER FILES:", files)
-
-    if uid not in files or len(files[uid]) == 0:
-        await update.effective_message.reply_text("❌ No archive files uploaded.")
+    if message.from_user.id != OWNER_ID:
         return
 
-    await update.effective_message.reply_text("⚙ Starting extraction...")
+    uid = message.from_user.id
 
-    await run_import(update, context, files[uid])
+    if uid not in user_files or not user_files[uid]:
+        await message.reply_text("❌ No archive files uploaded")
+        return
 
-
-# -----------------------
-# import
-# -----------------------
-
-async def run_import(update, context, files):
-
-    files = sorted(files)
+    files = sorted(user_files[uid])
 
     archive = find_archive_start(files)
 
-    password = context.user_data.get("password", "")
+    await message.reply_text("⚙ Starting extraction...")
 
-    msg = await update.effective_message.reply_text("📦 Extracting...")
+    await run_import(message, archive)
 
-    process = extract_stream(archive, password)
+
+# -------------------
+# Import pipeline
+# -------------------
+
+async def run_import(message, archive):
+
+    process = extract_stream(archive)
 
     batch = []
     processed = 0
@@ -165,15 +124,17 @@ async def run_import(update, context, files):
             break
 
         try:
+
             row = parse_line(line)
 
             if row:
                 batch.append(row)
 
         except Exception as e:
-            logging.error(f"parse error {e}")
+            logging.error(e)
 
         if len(batch) >= BATCH_SIZE:
+
             insert_rows(batch)
             batch.clear()
 
@@ -184,27 +145,43 @@ async def run_import(update, context, files):
 
     insert_rows(batch)
 
-    await msg.edit_text("✅ Import completed")
+    await message.reply_text("✅ Import completed")
 
 
-# -----------------------
-# bot setup
-# -----------------------
+# -------------------
+# Delete command
+# -------------------
 
-app = ApplicationBuilder().token(BOT_TOKEN).build()
+@Client.on_message(filters.command("delete"))
+async def delete(client, message):
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("extract", extract))
+    if message.from_user.id != OWNER_ID:
+        return
 
-app.add_handler(MessageHandler(filters.Document.ALL, receive_file))
+    parts = message.text.split()
+
+    if len(parts) != 2:
+        await message.reply_text("Invalid command")
+        return
+
+    if not verify_password(parts[1]):
+        await message.reply_text("Access denied")
+        return
+
+    full_wipe()
+
+    await message.reply_text("Database deleted")
 
 
-# -----------------------
-# run
-# -----------------------
+# -------------------
+# Run bot
+# -------------------
 
-if __name__ == "__main__":
+app = Client(
+    "exbot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
 
-    print("EXBOT STARTED")
-
-    app.run_polling()
+app.run()
