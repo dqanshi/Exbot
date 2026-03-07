@@ -3,18 +3,19 @@ import os
 
 
 def extract_stream(archive, password=""):
+import subprocess
+
+def extract_stream(archive, password=""):
 
     cmd = [
         "7z",
         "x",
         archive,
+        f"-p{password}",
         "-so",
         "-bd",
         "-mmt=on"
     ]
-
-    if password:
-        cmd.append(f"-p{password}")
 
     process = subprocess.Popen(
         cmd,
