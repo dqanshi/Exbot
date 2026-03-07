@@ -24,6 +24,13 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+app = Client(
+    "exbot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
+
 user_files = {}
 await_password = {}
 
@@ -32,7 +39,7 @@ await_password = {}
 # Start
 # -------------------
 
-@Client.on_message(filters.command("start"))
+@app.on_message(filters.command("start"))
 async def start(client, message):
 
     if message.from_user.id != OWNER_ID:
@@ -49,7 +56,7 @@ async def start(client, message):
 # Receive archive
 # -------------------
 
-@Client.on_message(filters.private & filters.incoming)
+@app.on_message(filters.private & filters.incoming)
 async def receive_file(client, message):
 
     if not message.document:
@@ -79,11 +86,12 @@ async def receive_file(client, message):
         f"📥 {doc.file_name} saved\nSend more parts or /extract"
     )
 
+
 # -------------------
 # Extract command
 # -------------------
 
-@Client.on_message(filters.command("extract"))
+@app.on_message(filters.command("extract"))
 async def extract(client, message):
 
     if message.from_user.id != OWNER_ID:
@@ -153,7 +161,7 @@ async def run_import(message, archive):
 # Delete command
 # -------------------
 
-@Client.on_message(filters.command("delete"))
+@app.on_message(filters.command("delete"))
 async def delete(client, message):
 
     if message.from_user.id != OWNER_ID:
@@ -174,21 +182,19 @@ async def delete(client, message):
     await message.reply_text("Database deleted")
 
 
-@Client.on_message(filters.private)
+# -------------------
+# Debug messages
+# -------------------
+
+@app.on_message(filters.private)
 async def debug(client, message):
     print("MESSAGE RECEIVED:", message)
-
 
 
 # -------------------
 # Run bot
 # -------------------
 
-app = Client(
-    "exbot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN
-)
+print("EXBOT STARTED")
 
 app.run()
