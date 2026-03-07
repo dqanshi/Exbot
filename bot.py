@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -20,16 +20,19 @@ from state import save_state, load_state
 from security import verify_password, full_wipe
 
 
-# Create folders
+# -----------------------
+# Setup folders
+# -----------------------
+
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# Logging
 logging.basicConfig(
     filename="logs/bot.log",
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
 )
+
 setup_database()
 
 user_files = {}
@@ -37,123 +40,92 @@ await_password = {}
 
 
 # -----------------------
-# Progress Bar
-# -----------------------
-
-def progress_bar(p):
-
-    size = 20
-    filled = int(size * p / 100)
-
-    bar = "█" * filled + "░" * (size - filled)
-
-    return f"""
-📦 Importing Dataset
-
-{bar} {p}%
-
-Processing records...
-"""
-
-
+# Debug handler
 # -----------------------
 
 async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("MESSAGE TYPE:", update.message)
+    print("DEBUG MESSAGE:", update.message)
 
 
-
-
-# Start Menu
+# -----------------------
+# Start command
 # -----------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    if update.message.from_user.id != OWNER_ID:
+    print("START COMMAND")
+
+    if update.effective_user.id != OWNER_ID:
+        print("IGNORED USER:", update.effective_user.id)
         return
 
-    keyboard = [
-        [InlineKeyboardButton("📦 Upload Archive", callback_data="upload")],
-        [InlineKeyboardButton("📊 Status", callback_data="status")]
-    ]
-
-    await update.message.reply_text(
-        """
-🤖 **Exbot Ready**
-
-Send archive files to start extraction.
-
-Supported:
-• .7z
-• .rar
-• split archives
-
-Bot will automatically extract and import data.
-""",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await update.message.reply_text("🤖 Exbot ready. Send archive files.")
 
 
 # -----------------------
-# Receive Archive
+# Receive file
 # -----------------------
 
 async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    if not update.message:
+    print("RECEIVE_FILE TRIGGERED")
+
+    if not update.effective_message:
+        print("NO MESSAGE")
         return
 
-    if update.message.from_user.id != OWNER_ID:
+    if update.effective_user.id != OWNER_ID:
+        print("WRONG OWNER")
         return
 
-    # ignore messages that are not files
-    if not update.message.document:
+    doc = update.effective_message.document
+
+    if not doc:
+        print("NO DOCUMENT FOUND")
         return
 
-    doc = update.message.document
+    print("FILE RECEIVED:", doc.file_name)
+
     file = await doc.get_file()
 
     path = os.path.join(DOWNLOAD_DIR, doc.file_name)
 
     await file.download_to_drive(path)
 
-    uid = update.message.from_user.id
+    uid = update.effective_user.id
 
     user_files.setdefault(uid, []).append(path)
 
-    caption = update.message.caption or ""
+    caption = update.effective_message.caption or ""
 
     password = ""
 
-    if "pass" in caption.lower():
+    if "pass" in caption.lower() or "password" in caption.lower():
         password = caption.split(":")[-1].strip()
 
     context.user_data["password"] = password
 
-    await update.message.reply_text(
-        f"📥 {doc.file_name} downloaded."
+    await update.effective_message.reply_text(
+        f"📥 {doc.file_name} downloaded"
     )
 
-    # ask password if needed
-    if context.user_data.get("password") == "":
+    if password == "":
         await_password[uid] = True
-
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "🔑 Send archive password or type none"
         )
         return
 
     await run_import(update, context)
-    
 
 
 # -----------------------
-# Password Handler
+# Password handler
 # -----------------------
 
 async def password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    uid = update.message.from_user.id
+    uid = update.effective_user.id
 
     if uid not in await_password:
         return
@@ -171,12 +143,12 @@ async def password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # -----------------------
-# Import System
+# Import system
 # -----------------------
 
 async def run_import(update, context):
 
-    uid = update.message.from_user.id
+    uid = update.effective_user.id
 
     files = sorted(user_files[uid])
 
@@ -184,7 +156,7 @@ async def run_import(update, context):
 
     password = context.user_data.get("password", "")
 
-    msg = await update.message.reply_text("⚙ Starting extraction...")
+    msg = await update.effective_message.reply_text("⚙ Starting extraction")
 
     process = extract_stream(archive, password)
 
@@ -200,22 +172,7 @@ async def run_import(update, context):
         if not line:
             break
 
-        stderr_line = process.stderr.readline()
-
-        # progress from 7z
-        if "%" in stderr_line:
-            try:
-                percent = int(stderr_line.strip().replace("%", ""))
-                await msg.edit_text(progress_bar(percent))
-            except:
-                pass
-
-        if processed < resume_line:
-            processed += 1
-            continue
-
         try:
-
             row = parse_line(line)
 
             if row:
@@ -236,30 +193,16 @@ async def run_import(update, context):
 
     insert_rows(batch)
 
-    await msg.edit_text("✅ Import completed.")
+    await msg.edit_text("✅ Import completed")
 
 
 # -----------------------
-# Status Command
-# -----------------------
-
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.message.from_user.id != OWNER_ID:
-        return
-
-    await update.message.reply_text(
-        "🟢 Exbot is running.\nSystem ready."
-    )
-
-
-# -----------------------
-# Emergency Delete
+# Delete command
 # -----------------------
 
 async def delete(update, context):
 
-    if update.message.from_user.id != OWNER_ID:
+    if update.effective_user.id != OWNER_ID:
         return
 
     parts = update.message.text.split()
@@ -272,46 +215,45 @@ async def delete(update, context):
         await update.message.reply_text("Access denied")
         return
 
-    await update.message.reply_text("⚠ Deleting dataset...")
-
     full_wipe()
 
-    await update.message.reply_text("🗑 Dataset removed.")
+    await update.message.reply_text("Database deleted")
 
 
 # -----------------------
-# Keep Bot Alive
+# Keep alive
 # -----------------------
 
 async def keep_alive():
 
     while True:
-        logging.info("Bot heartbeat alive")
+        logging.info("BOT ALIVE")
         await asyncio.sleep(300)
 
 
 # -----------------------
-# Main
+# Bot setup
 # -----------------------
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("status", status))
 app.add_handler(CommandHandler("delete", delete))
 
+# DEBUG HANDLER
 app.add_handler(MessageHandler(filters.ALL, debug))
+
+# FILE HANDLER
+app.add_handler(MessageHandler(filters.Document.ALL, receive_file))
+
+# PASSWORD HANDLER
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, password))
 
 
-async def main():
-
-    asyncio.create_task(keep_alive())
-
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-
-
 if __name__ == "__main__":
+
+    asyncio.get_event_loop().create_task(keep_alive())
+
+    print("EXBOT STARTED")
+
     app.run_polling()
