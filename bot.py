@@ -63,6 +63,7 @@ async def start(client, message):
 
 
 @app.on_message(filters.command("dex"))
+@app.on_message(filters.command("dex"))
 async def dex_cmd(client, message):
 
     if message.from_user.id != OWNER_ID:
@@ -71,7 +72,6 @@ async def dex_cmd(client, message):
     files = []
 
     for f in os.listdir(DOWNLOAD_DIR):
-
         if ".7z" in f:
             files.append(os.path.join(DOWNLOAD_DIR, f))
 
@@ -83,11 +83,11 @@ async def dex_cmd(client, message):
 
     archive = find_archive_start(files)
 
-    await message.reply_text(
-        "🔐 Archive may require password.\n\nSend password or type `none`"
-    )
-
     await_password[message.from_user.id] = archive
+
+    await message.reply_text(
+        "🔐 Send archive password or type `none`"
+    )
 
 @app.on_message(filters.private & filters.text)
 async def password_input(client, message):
@@ -97,17 +97,16 @@ async def password_input(client, message):
     if uid not in await_password:
         return
 
+    archive = await_password.pop(uid)
+
     password = message.text
 
     if password.lower() == "none":
         password = ""
 
-    archive = await_password.pop(uid)
-
     await message.reply_text("📦 Starting extraction...")
 
     await run_import(message, archive, password)
-    
 
 
 # -------------------------
