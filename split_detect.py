@@ -39,3 +39,25 @@ def all_parts_present(files):
             return False
 
     return True
+    
+
+def find_archive_start(files):
+    """
+    Detect first archive file in split archives
+    """
+
+    for f in files:
+
+        # 7z split archives
+        if f.endswith(".001"):
+            return f
+
+        # rar split archives
+        if ".part1.rar" in f:
+            return f
+
+        # normal archive
+        if f.endswith(".7z") or f.endswith(".rar"):
+            return f
+
+    return files[0]
