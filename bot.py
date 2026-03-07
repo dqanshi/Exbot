@@ -20,16 +20,22 @@ from state import save_state, load_state
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 
-logging.basicConfig(filename="logs/bot.log", level=logging.INFO)
+logging.basicConfig(
+    filename="logs/bot.log",
+    level=logging.INFO
+)
 
 app = Client(
     "exbot",
     api_id=API_ID,
     api_hash=API_HASH,
-    bot_token=BOT_TOKEN
+    bot_token=BOT_TOKEN,
+    workers=8  # faster downloads
 )
 
 user_files = {}
+user_password = {}
+await_password = {}
 
 
 # -------------------------
@@ -41,9 +47,7 @@ def progress_bar(percent):
     filled = int(percent / 5)
     bar = "█" * filled + "░" * (20 - filled)
 
-    return f"""
-{bar} {percent:.1f}%
-"""
+    return f"{bar} {percent:.1f}%"
 
 
 # -------------------------
@@ -76,11 +80,9 @@ async def receive_file(client, message):
     doc = message.document
     uid = message.from_user.id
 
-    print("FILE RECEIVED:", doc.file_name)
-
     path = os.path.join(DOWNLOAD_DIR, doc.file_name)
 
-    progress_msg = await message.reply_text("⬇️ Starting download...")
+    msg = await message.reply_text("⬇️ Preparing download...")
 
     async def progress(current, total):
 
@@ -95,7 +97,7 @@ async def receive_file(client, message):
 """
 
         try:
-            await progress_msg.edit_text(text)
+            await msg.edit_text(text)
         except:
             pass
 
@@ -109,13 +111,26 @@ async def receive_file(client, message):
 
     user_files[uid].append(path)
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚙ Extract", callback_data="extract")]
-    ])
+    # Detect password from caption
+    caption = message.caption or ""
 
-    await progress_msg.edit_text(
-        f"✅ {doc.file_name} downloaded\n\n"
-        f"Send more files or press Extract",
+    if "password" in caption.lower():
+        try:
+            pwd = caption.split(":")[-1].strip()
+            user_password[uid] = pwd
+        except:
+            pass
+
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("⚙ Extract", callback_data="extract")]]
+    )
+
+    await msg.edit_text(
+        f"""✅ {doc.file_name} downloaded
+
+Files ready: {len(user_files[uid])}
+
+Send more files or press Extract""",
         reply_markup=keyboard
     )
 
@@ -127,11 +142,20 @@ async def receive_file(client, message):
 @app.on_callback_query(filters.regex("extract"))
 async def extract_button(client, callback):
 
-    message = callback.message
     uid = callback.from_user.id
+    message = callback.message
 
     if uid not in user_files:
         await message.reply_text("❌ No files uploaded")
+        return
+
+    if uid not in user_password:
+
+        await message.reply_text(
+            "🔐 Archive password required.\nSend password or type `none`"
+        )
+
+        await_password[uid] = True
         return
 
     files = sorted(user_files[uid])
@@ -139,7 +163,7 @@ async def extract_button(client, callback):
 
     await message.edit_text("⚙ Starting extraction...")
 
-    await run_import(message, archive)
+    await run_import(message, archive, user_password.get(uid, ""))
 
 
 # -------------------------
@@ -155,29 +179,66 @@ async def extract_cmd(client, message):
         await message.reply_text("❌ No files uploaded")
         return
 
+    if uid not in user_password:
+
+        await message.reply_text(
+            "🔐 Archive password required.\nSend password or type `none`"
+        )
+
+        await_password[uid] = True
+        return
+
     files = sorted(user_files[uid])
     archive = find_archive_start(files)
 
     msg = await message.reply_text("⚙ Starting extraction...")
 
-    await run_import(msg, archive)
+    await run_import(msg, archive, user_password.get(uid, ""))
+
+
+# -------------------------
+# Password input
+# -------------------------
+
+@app.on_message(filters.private & filters.text)
+async def password_handler(client, message):
+
+    uid = message.from_user.id
+
+    if uid not in await_password:
+        return
+
+    pwd = message.text
+
+    if pwd.lower() == "none":
+        pwd = ""
+
+    user_password[uid] = pwd
+    await_password.pop(uid)
+
+    files = sorted(user_files[uid])
+    archive = find_archive_start(files)
+
+    msg = await message.reply_text("⚙ Starting extraction...")
+
+    await run_import(msg, archive, pwd)
 
 
 # -------------------------
 # Extraction + DB import
 # -------------------------
 
-async def run_import(message, archive):
+async def run_import(message, archive, password=""):
 
-    process = extract_stream(archive)
+    process = extract_stream(archive, password)
 
     batch = []
     processed = 0
     last_update = 0
 
-    resume_line = load_state()
+    status = await message.reply_text("📦 Extracting archive...")
 
-    status_msg = await message.reply_text("📦 Extracting archive...")
+    resume_line = load_state()
 
     while True:
 
@@ -189,6 +250,7 @@ async def run_import(message, archive):
         processed += 1
 
         try:
+
             row = parse_line(line)
 
             if row:
@@ -206,13 +268,13 @@ async def run_import(message, archive):
 
             percent = min((processed / 180000000) * 100, 100)
 
-            await status_msg.edit_text(
+            await status.edit_text(
                 f"""
 📦 Importing dataset
 
 {progress_bar(percent)}
 
-Processed: {processed:,} rows
+Rows processed: {processed:,}
 """
             )
 
@@ -220,7 +282,7 @@ Processed: {processed:,} rows
 
     insert_rows(batch)
 
-    await status_msg.edit_text(
+    await status.edit_text(
         f"""
 ✅ Import completed
 
