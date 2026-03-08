@@ -100,9 +100,16 @@ async def dex_cmd(client, message):
 
     print("[DEBUG] archive selected:", archive)
 
-    msg = await message.reply_text("⚙ Starting extraction...")
+    print("[DEBUG] calling run_import")
+
+    try:
+        msg = await message.reply_text("⚙ Starting extraction...")
+    except Exception as e:
+        print("[ERROR] Telegram reply failed:", e)
+        msg = message
 
     await run_import(msg, archive, password)
+
 
 # -------------------------
 # Import function
@@ -110,10 +117,13 @@ async def dex_cmd(client, message):
 
 async def run_import(message, archive, password=""):
 
-    status = await message.reply_text("📦 Extracting archive...")
-
     print("[DEBUG] run_import started")
     print("[DEBUG] archive =", archive)
+
+    try:
+        status = await message.reply_text("📦 Extracting archive...")
+    except:
+        status = message
 
     process = extract_stream(archive, password)
 
@@ -127,13 +137,12 @@ async def run_import(message, archive, password=""):
 
     print("[DEBUG] starting stream read")
 
-    # STREAM READ FIX
-    for line in process.stdout:
+    # streaming loop
+    for line in iter(process.stdout.readline, ''):
 
         processed += 1
 
         try:
-
             row = parse_line(line)
 
             if row:
@@ -168,7 +177,6 @@ async def run_import(message, archive, password=""):
             percent = min((processed / 182000000) * 100, 100)
 
             try:
-
                 await status.edit_text(
                     f"""
 📦 Importing dataset
@@ -179,7 +187,6 @@ Rows processed: {processed:,}
 ⚡ Speed: {speed:,.0f} rows/sec
 """
                 )
-
             except:
                 pass
 
@@ -197,13 +204,16 @@ Rows processed: {processed:,}
 
     print(f"[DEBUG] import completed, total rows={processed}")
 
-    await status.edit_text(
-        f"""
+    try:
+        await status.edit_text(
+            f"""
 ✅ Import completed
 
 Total rows processed: {processed:,}
 """
-    )
+        )
+    except:
+        pass
 
 
 # -------------------------
