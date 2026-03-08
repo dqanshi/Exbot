@@ -6,9 +6,13 @@ from pyrogram import Client, filters
 from config import *
 from extractor import extract_stream
 from parser import parse_line
-from db import insert_rows, setup_database
+from db import insert_rows
 from split_detect import find_archive_start
 
+
+# -------------------------
+# Setup folders
+# -------------------------
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -18,7 +22,10 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-setup_database()
+
+# -------------------------
+# Telegram Client
+# -------------------------
 
 app = Client(
     "exbot",
@@ -29,6 +36,10 @@ app = Client(
 )
 
 
+# -------------------------
+# Progress bar
+# -------------------------
+
 def progress_bar(percent):
 
     filled = int(percent / 5)
@@ -37,24 +48,47 @@ def progress_bar(percent):
     return f"{bar} {percent:.1f}%"
 
 
+# -------------------------
+# Start command
+# -------------------------
+
+@app.on_message(filters.command("start"))
+async def start(client, message):
+
+    if message.from_user.id != OWNER_ID:
+        return
+
+    await message.reply_text(
+        "🤖 Exbot Ready\n\n"
+        "Send /dex to start importing archives from server."
+    )
+
+
+# -------------------------
+# /dex command
+# -------------------------
+
 @app.on_message(filters.command("dex") & filters.private)
 async def dex_cmd(client, message):
 
     if message.from_user.id != OWNER_ID:
         return
 
-    password = ""
     parts = message.text.split(maxsplit=1)
 
+    password = ""
     if len(parts) > 1:
         password = parts[1]
+
+    print("[DEBUG] /dex command received")
 
     files = []
 
     for f in os.listdir(DOWNLOAD_DIR):
-
         if f.endswith(".7z") or ".7z." in f:
             files.append(os.path.join(DOWNLOAD_DIR, f))
+
+    print("[DEBUG] files found:", files)
 
     if not files:
         await message.reply_text("❌ No archive files found")
@@ -64,14 +98,32 @@ async def dex_cmd(client, message):
 
     archive = find_archive_start(files)
 
-    msg = await message.reply_text("⚙ Starting extraction...")
+    print("[DEBUG] archive selected:", archive)
+
+    print("[DEBUG] calling run_import")
+
+    try:
+        msg = await message.reply_text("⚙ Starting extraction...")
+    except Exception as e:
+        print("[ERROR] Telegram reply failed:", e)
+        msg = message
 
     await run_import(msg, archive, password)
 
 
+# -------------------------
+# Import function
+# -------------------------
+
 async def run_import(message, archive, password=""):
 
-    status = await message.reply_text("📦 Extracting archive...")
+    print("[DEBUG] run_import started")
+    print("[DEBUG] archive =", archive)
+
+    try:
+        status = await message.reply_text("📦 Extracting archive...")
+    except:
+        status = message
 
     process = extract_stream(archive, password)
 
@@ -80,14 +132,17 @@ async def run_import(message, archive, password=""):
     last_update = 0
 
     BATCH = BATCH_SIZE
+
     start_time = time.time()
 
+    print("[DEBUG] starting stream read")
+
+    # streaming loop
     for line in iter(process.stdout.readline, ''):
 
         processed += 1
 
         try:
-
             row = parse_line(line)
 
             if row:
@@ -96,20 +151,32 @@ async def run_import(message, archive, password=""):
         except Exception as e:
             logging.error(e)
 
+        # -------------------------
+        # Insert batch
+        # -------------------------
+
         if len(batch) >= BATCH:
 
+            print(f"[DEBUG] inserting batch {len(batch)}")
+
             insert_rows(batch.copy())
+
             batch.clear()
+
+        # -------------------------
+        # Progress update
+        # -------------------------
 
         if processed - last_update >= 50000:
 
             elapsed = time.time() - start_time
             speed = processed / elapsed if elapsed > 0 else 0
 
+            print(f"[DEBUG] processed={processed} speed={speed:.0f} rows/sec")
+
             percent = min((processed / 182000000) * 100, 100)
 
             try:
-
                 await status.edit_text(
                     f"""
 📦 Importing dataset
@@ -120,23 +187,38 @@ Rows processed: {processed:,}
 ⚡ Speed: {speed:,.0f} rows/sec
 """
                 )
-
             except:
                 pass
 
             last_update = processed
 
+    # -------------------------
+    # Insert remaining rows
+    # -------------------------
+
     if batch:
+
+        print(f"[DEBUG] inserting final batch {len(batch)}")
+
         insert_rows(batch.copy())
 
-    await status.edit_text(
-        f"""
+    print(f"[DEBUG] import completed, total rows={processed}")
+
+    try:
+        await status.edit_text(
+            f"""
 ✅ Import completed
 
 Total rows processed: {processed:,}
 """
-    )
+        )
+    except:
+        pass
 
+
+# -------------------------
+# Run bot
+# -------------------------
 
 print("EXBOT STARTED")
 
