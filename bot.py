@@ -236,10 +236,9 @@ Total rows processed: {processed:,}
         )
 
     except FloodWait as e:
-        print(f"[TELEGRAM] FloodWait {e.value}s — skipping final update")
-
-    except:
-        pass
+    print(f"[TELEGRAM] FloodWait {e.value}s — skipping update")
+    last_update = processed
+    continue
 # -------------------------
 # Run bot
 # -------------------------
