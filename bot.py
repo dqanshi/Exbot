@@ -74,33 +74,29 @@ async def dex_cmd(client, message):
     if message.from_user.id != OWNER_ID:
         return
 
-    parts = message.text.split(maxsplit=1)
-
-    password = ""
-
-    if len(parts) > 1:
-        password = parts[1].strip()
+    print("[DEBUG] /dex command received")
 
     files = []
 
     for f in os.listdir(DOWNLOAD_DIR):
-
         if f.endswith(".7z") or ".7z." in f:
             files.append(os.path.join(DOWNLOAD_DIR, f))
 
-    if not files:
+    print("[DEBUG] files found:", files)
 
-        await message.reply_text("❌ No archive files found in downloads/")
+    if not files:
+        await message.reply_text("❌ No archive files found")
         return
 
     files.sort()
 
     archive = find_archive_start(files)
 
+    print("[DEBUG] archive selected:", archive)
+
     msg = await message.reply_text("⚙ Starting extraction...")
 
-    await run_import(msg, archive, password)
-
+    await run_import(msg, archive)
 
 # -------------------------
 # Import function
