@@ -37,10 +37,12 @@ def extract_stream(archive, password=""):
     return process
 
 
+import subprocess
+import os
+
 def extract_to_disk(archive, password=""):
 
     output_dir = "downloads/extracted"
-
     os.makedirs(output_dir, exist_ok=True)
 
     cmd = [
@@ -58,6 +60,29 @@ def extract_to_disk(archive, password=""):
 
     subprocess.run(cmd, check=True)
 
+    # detect nested .7z
+    for f in os.listdir(output_dir):
+
+        if f.endswith(".7z"):
+
+            nested = os.path.join(output_dir, f)
+
+            cmd2 = [
+                "7z",
+                "x",
+                nested,
+                "-y",
+                f"-o{output_dir}",
+                "-bd",
+                "-mmt=on"
+            ]
+
+            if password:
+                cmd2.append(f"-p{password}")
+
+            subprocess.run(cmd2, check=True)
+
+    # find final txt/csv
     for root, dirs, files in os.walk(output_dir):
 
         for f in files:
