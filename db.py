@@ -53,10 +53,9 @@ def insert_rows(rows):
         except Exception as e:
 
             print("[DB] connection error:", e)
-
             print("[DB] reconnecting...")
 
-            time.sleep(2)
+            time.sleep(5)
 
             try:
                 connect()
