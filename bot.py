@@ -114,6 +114,11 @@ async def dex_cmd(client, message):
 # -------------------------
 # Import function
 # -------------------------
+from state import load_state, save_state
+
+start_line = load_state()
+print("[DEBUG] resuming from line", start_line)
+
 
 async def run_import(message, archive, password=""):
 
