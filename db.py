@@ -16,12 +16,6 @@ def setup_database():
     (
         user_id UInt64,
         username String,
-        first_name String,
-        last_name String,
-        phone String,
-        status String,
-        linked_usernames Array(String),
-        extra_ids Array(UInt64),
         raw_line String
     )
     ENGINE = MergeTree()
@@ -37,19 +31,16 @@ def insert_rows(rows):
     def task():
 
         try:
-
             print(f"[DB] inserting batch {len(rows)}")
 
             client.execute(
                 f"INSERT INTO {CLICKHOUSE_DB}.users VALUES",
-                rows,
-                types_check=True
+                rows
             )
 
             print("[DB] insert success")
 
         except Exception as e:
-
             print("DB ERROR:", e)
 
     executor.submit(task)
