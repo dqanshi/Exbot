@@ -1,10 +1,7 @@
-from concurrent.futures import ThreadPoolExecutor
 from clickhouse_driver import Client
 from config import CLICKHOUSE_HOST, CLICKHOUSE_DB
 
 client = Client(host=CLICKHOUSE_HOST)
-
-executor = ThreadPoolExecutor(max_workers=4)
 
 
 def setup_database():
@@ -14,12 +11,10 @@ def setup_database():
     client.execute(f"""
     CREATE TABLE IF NOT EXISTS {CLICKHOUSE_DB}.users
     (
-        user_id UInt64,
-        username String,
         raw_line String
     )
     ENGINE = MergeTree()
-    ORDER BY user_id
+    ORDER BY tuple()
     """)
 
 
@@ -28,19 +23,17 @@ def insert_rows(rows):
     if not rows:
         return
 
-    def task():
+    try:
 
-        try:
-            print(f"[DB] inserting batch {len(rows)}")
+        print(f"[DB] inserting batch {len(rows)}")
 
-            client.execute(
-                f"INSERT INTO {CLICKHOUSE_DB}.users VALUES",
-                rows
-            )
+        client.execute(
+            f"INSERT INTO {CLICKHOUSE_DB}.users VALUES",
+            rows
+        )
 
-            print("[DB] insert success")
+        print("[DB] insert success")
 
-        except Exception as e:
-            print("DB ERROR:", e)
+    except Exception as e:
 
-    executor.submit(task)
+        print("DB ERROR:", e)
