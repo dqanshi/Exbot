@@ -1,7 +1,8 @@
 import os
 import logging
 import time
-
+from pyrogram.errors import FloodWait
+import asyncio
 from pyrogram import Client, filters
 from config import *
 from extractor import extract_stream
@@ -119,6 +120,7 @@ async def dex_cmd(client, message):
 # -------------------------
 # Import function
 # -------------------------
+
 from state import load_state, save_state
 
 start_line = load_state()
@@ -148,22 +150,22 @@ async def run_import(message, archive, password=""):
     print("[DEBUG] starting stream read")
 
     # streaming loop
-for line in iter(process.stdout.readline, ''):
+    for line in iter(process.stdout.readline, ''):
 
-    processed += 1
+        processed += 1
 
-    # skip rows already stored in DB
-    if processed <= start_line:
-        continue
+        # skip rows already processed
+        if processed <= start_line:
+            continue
 
-    try:
-        row = parse_line(line)
+        try:
+            row = parse_line(line)
 
-        if row:
-            batch.append(row)
+            if row:
+                batch.append(row)
 
-    except Exception as e:
-        logging.error(e)
+        except Exception as e:
+            logging.error(e)
 
         # -------------------------
         # Insert batch
@@ -173,10 +175,10 @@ for line in iter(process.stdout.readline, ''):
 
             print(f"[DEBUG] inserting batch {len(batch)}")
 
-            success = insert_rows(batch)
+            success = insert_rows(batch.copy())
 
-        if success:
-            batch.clear()
+            if success:
+                batch.clear()
 
         # -------------------------
         # Progress update
@@ -191,9 +193,7 @@ for line in iter(process.stdout.readline, ''):
 
             percent = min((processed / 182000000) * 100, 100)
 
-            try:
-                await status.edit_text(
-                    f"""
+            text = f"""
 📦 Importing dataset
 
 {progress_bar(percent)}
@@ -201,9 +201,23 @@ for line in iter(process.stdout.readline, ''):
 Rows processed: {processed:,}
 ⚡ Speed: {speed:,.0f} rows/sec
 """
-                )
-            except:
-                pass
+
+            try:
+                await status.edit_text(text)
+
+            except FloodWait as e:
+
+                print(f"[TELEGRAM] FloodWait {e.value}s")
+
+                await asyncio.sleep(e.value)
+
+                try:
+                    await status.edit_text(text)
+                except:
+                    pass
+
+            except Exception as e:
+                print("[TELEGRAM] edit error:", e)
 
             last_update = processed
 
@@ -227,10 +241,24 @@ Rows processed: {processed:,}
 Total rows processed: {processed:,}
 """
         )
+
+    except FloodWait as e:
+
+        await asyncio.sleep(e.value)
+
+        try:
+            await status.edit_text(
+                f"""
+✅ Import completed
+
+Total rows processed: {processed:,}
+"""
+            )
+        except:
+            pass
+
     except:
         pass
-
-
 # -------------------------
 # Run bot
 # -------------------------
