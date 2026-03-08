@@ -1,8 +1,8 @@
-def parse_line(line):
+def insert_rows(rows):
+    if not rows:
+        return
 
-    line = line.rstrip("\n")
-
-    if not line:
-        return None
-
-    return (line,)
+    client.execute(
+        "INSERT INTO telegram.users FORMAT TSV",
+        "\n".join(r[0] for r in rows)
+    )
