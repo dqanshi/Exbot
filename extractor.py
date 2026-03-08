@@ -27,7 +27,7 @@ def extract_stream(archive, password=""):
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        stderr=None,      # show errors directly
+        stderr=None,
         text=True,
         bufsize=1
     )
@@ -35,41 +35,3 @@ def extract_stream(archive, password=""):
     debug("7z process started")
 
     return process
-
-
-def extract_to_disk(archive, password=""):
-
-    debug("Fallback extraction to disk started")
-
-    output_dir = "downloads/extracted"
-    os.makedirs(output_dir, exist_ok=True)
-
-    cmd = [
-        "7z",
-        "x",
-        archive,
-        "-y",
-        f"-o{output_dir}",
-        "-bd",
-        "-mmt=2"
-    ]
-
-    if password:
-        cmd.append(f"-p{password}")
-
-    debug("Running: " + " ".join(cmd))
-
-    subprocess.run(cmd, check=True)
-
-    debug("First extraction finished")
-
-    for root, dirs, files in os.walk(output_dir):
-        for f in files:
-            if f.endswith(".txt") or f.endswith(".csv"):
-                path = os.path.join(root, f)
-                debug(f"Dataset detected: {path}")
-                return path
-
-    debug("No dataset found after extraction")
-
-    return None
