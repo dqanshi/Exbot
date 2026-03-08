@@ -12,5 +12,5 @@ LOG_DIR = "logs"
 CLICKHOUSE_HOST = "localhost"
 CLICKHOUSE_DB = "telegram"
 
-BATCH_SIZE = 100000
+BATCH_SIZE = 10000
 STATE_FILE = "import_state.json"
