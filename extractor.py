@@ -1,18 +1,42 @@
 import subprocess
-import os
-
 
 def extract_stream(archive, password=""):
+
+    # find internal file name
+    list_cmd = ["7z", "l", archive]
+
+    result = subprocess.run(
+        list_cmd,
+        capture_output=True,
+        text=True
+    )
+
+    lines = result.stdout.splitlines()
+
+    target_file = None
+
+    for l in lines:
+        if ".txt" in l or ".csv" in l:
+            target_file = l.split()[-1]
+            break
+
+    if not target_file:
+        raise Exception("No txt/csv file inside archive")
 
     cmd = [
         "7z",
         "x",
         archive,
-        f"-p{password}",
+        target_file,
         "-so",
         "-bd",
         "-mmt=on"
     ]
+
+    if password:
+        cmd.append(f"-p{password}")
+
+    print("Running:", " ".join(cmd))
 
     process = subprocess.Popen(
         cmd,
@@ -23,29 +47,3 @@ def extract_stream(archive, password=""):
     )
 
     return process
-
-
-def extract_to_disk(archive, password=""):
-
-    output_dir = "downloads"
-
-    cmd = [
-        "7z",
-        "x",
-        archive,
-        "-y",
-        f"-o{output_dir}",
-        "-mmt=on"
-    ]
-
-    if password:
-        cmd.append(f"-p{password}")
-
-    subprocess.run(cmd, check=True)
-
-    for f in os.listdir(output_dir):
-
-        if f.endswith(".txt") or f.endswith(".csv"):
-            return os.path.join(output_dir, f)
-
-    return None
