@@ -176,23 +176,7 @@ async def extract_button(client, callback):
 
 
 @app.on_message(filters.command("dex"))
-async def dex_cmd(client, message):
 
-    if message.from_user.id != OWNER_ID:
-        return
-
-    uid = message.from_user.id
-
-    if uid not in user_files or not user_files[uid]:
-        await message.reply_text("❌ No archive files uploaded")
-        return
-
-    await_password[uid] = True
-
-    await message.reply_text(
-        "🔐 Send archive password or type `none`"
-    )
-    
 # -------------------------
 # Password input
 # -------------------------
