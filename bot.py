@@ -69,7 +69,22 @@ async def start(client, message):
         "Send /dex to start importing archives from server."
     )
 
+@app.on_message(filters.document & filters.private)
+async def download_file(client, message):
 
+    if message.from_user.id != OWNER_ID:
+        return
+
+    file = message.document
+
+    path = os.path.join(DOWNLOAD_DIR, file.file_name)
+
+    await message.reply_text(f"⬇ Downloading {file.file_name}...")
+
+    await message.download(file_name=path)
+
+    await message.reply_text("✅ File downloaded to server")
+    
 # -------------------------
 # /dex command
 # -------------------------
