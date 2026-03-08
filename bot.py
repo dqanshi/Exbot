@@ -151,6 +151,19 @@ async def run_import(message, archive, password=""):
 
         processed += 1
 
+        # debug progress every 1M rows
+        if processed % 1000000 == 0:
+            elapsed = time.time() - start_time
+            speed = processed / elapsed if elapsed > 0 else 0
+            remaining = 182000000 - processed
+            eta = remaining / speed if speed > 0 else 0
+
+            print(
+                f"[DEBUG] rows={processed:,} | "
+                f"speed={speed:,.0f} rows/sec | "
+                f"ETA={eta/60:.1f} min"
+            )
+
         # skip rows already processed (resume logic)
         if processed <= start_line:
             continue
@@ -198,7 +211,6 @@ Rows processed: {processed:,}
         )
     except:
         pass
-        
 # -------------------------
 # Run bot
 # -------------------------
