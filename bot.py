@@ -9,7 +9,15 @@ from parser import parse_line
 from db import insert_rows
 from split_detect import find_archive_start
 
+from clickhouse_driver import Client
+from config import CLICKHOUSE_HOST, CLICKHOUSE_DB
 
+client = Client(host=CLICKHOUSE_HOST)
+
+def get_row_count():
+    result = client.execute(f"SELECT count() FROM {CLICKHOUSE_DB}.users")
+    return result[0][0]
+    
 # -------------------------
 # Setup folders
 # -------------------------
