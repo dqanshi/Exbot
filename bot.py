@@ -9,7 +9,11 @@ from parser import parse_line
 from db import insert_rows
 from split_detect import find_archive_start
 
+from db import get_row_count
 
+start_line = get_row_count()
+
+print("[DEBUG] database rows:", start_line)
     
 # -------------------------
 # Setup folders
@@ -144,18 +148,22 @@ async def run_import(message, archive, password=""):
     print("[DEBUG] starting stream read")
 
     # streaming loop
-    for line in iter(process.stdout.readline, ''):
+for line in iter(process.stdout.readline, ''):
 
-        processed += 1
+    processed += 1
 
-        try:
-            row = parse_line(line)
+    # skip rows already stored in DB
+    if processed <= start_line:
+        continue
 
-            if row:
-                batch.append(row)
+    try:
+        row = parse_line(line)
 
-        except Exception as e:
-            logging.error(e)
+        if row:
+            batch.append(row)
+
+    except Exception as e:
+        logging.error(e)
 
         # -------------------------
         # Insert batch
