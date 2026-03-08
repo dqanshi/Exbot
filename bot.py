@@ -175,7 +175,6 @@ async def extract_button(client, callback):
 
 
 
-@app.on_message(filters.command("dex"))
 
 # -------------------------
 # Password input
@@ -209,9 +208,14 @@ async def password_handler(client, message):
 # Extraction + Import
 # -------------------------
 
+
+
 async def run_import(message, archive, password=""):
 
     status = await message.reply_text("📦 Extracting archive...")
+
+    print("[DEBUG] run_import started")
+    print(f"[DEBUG] archive = {archive}")
 
     process = extract_stream(archive, password)
 
@@ -221,17 +225,22 @@ async def run_import(message, archive, password=""):
 
     BATCH = BATCH_SIZE
 
-    # Read first line to detect streaming
+    start_time = time.time()
+
+    print("[DEBUG] waiting for first stream line...")
+
+    # detect streaming
     first_line = process.stdout.readline()
 
-    # STREAM MODE
     if first_line:
+        print("[DEBUG] streaming mode detected")
 
         line = first_line
 
         while True:
 
             if not line:
+                print("[DEBUG] stream ended")
                 break
 
             processed += 1
@@ -247,11 +256,17 @@ async def run_import(message, archive, password=""):
 
             # insert batch
             if len(batch) >= BATCH:
+                print(f"[DEBUG] inserting batch {len(batch)}")
                 insert_rows(batch.copy())
                 batch.clear()
 
-            # update progress every 50k rows
+            # update progress
             if processed - last_update >= 50000:
+
+                elapsed = time.time() - start_time
+                speed = processed / elapsed if elapsed > 0 else 0
+
+                print(f"[DEBUG] processed={processed} speed={speed:.0f} rows/sec")
 
                 percent = min((processed / 182000000) * 100, 100)
 
@@ -263,6 +278,7 @@ async def run_import(message, archive, password=""):
 {progress_bar(percent)}
 
 Rows processed: {processed:,}
+⚡ Speed: {speed:,.0f} rows/sec
 """
                     )
                 except:
@@ -272,12 +288,16 @@ Rows processed: {processed:,}
 
             line = process.stdout.readline()
 
-    # FALLBACK MODE (extract to disk)
+    # FALLBACK MODE
     else:
+
+        print("[DEBUG] streaming failed, switching to disk extraction")
 
         await status.edit_text("⚠ Streaming failed. Extracting to disk...")
 
         filepath = extract_to_disk(archive, password)
+
+        print(f"[DEBUG] extracted file: {filepath}")
 
         with open(filepath, "r", errors="ignore") as f:
 
@@ -295,10 +315,16 @@ Rows processed: {processed:,}
                     logging.error(e)
 
                 if len(batch) >= BATCH:
+                    print(f"[DEBUG] inserting batch {len(batch)}")
                     insert_rows(batch.copy())
                     batch.clear()
 
                 if processed - last_update >= 50000:
+
+                    elapsed = time.time() - start_time
+                    speed = processed / elapsed if elapsed > 0 else 0
+
+                    print(f"[DEBUG] processed={processed} speed={speed:.0f} rows/sec")
 
                     percent = min((processed / 182000000) * 100, 100)
 
@@ -310,6 +336,7 @@ Rows processed: {processed:,}
 {progress_bar(percent)}
 
 Rows processed: {processed:,}
+⚡ Speed: {speed:,.0f} rows/sec
 """
                         )
                     except:
@@ -317,9 +344,11 @@ Rows processed: {processed:,}
 
                     last_update = processed
 
-    # Insert remaining rows
     if batch:
+        print(f"[DEBUG] inserting final batch {len(batch)}")
         insert_rows(batch.copy())
+
+    print(f"[DEBUG] import completed, total rows={processed}")
 
     await status.edit_text(
         f"""
@@ -327,8 +356,7 @@ Rows processed: {processed:,}
 
 Total rows processed: {processed:,}
 """
-    )
-
+            )
 
 print("EXBOT STARTED")
 
