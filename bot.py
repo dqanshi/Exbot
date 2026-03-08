@@ -159,8 +159,9 @@ async def run_import(message, archive, password=""):
 
             print(f"[DEBUG] inserting batch {len(batch)}")
 
-            insert_rows(batch.copy())
+            success = insert_rows(batch)
 
+       if success:
             batch.clear()
 
         # -------------------------
