@@ -125,7 +125,6 @@ from state import load_state, save_state
 start_line = load_state()
 print("[DEBUG] resuming from line", start_line)
 
-
 async def run_import(message, archive, password=""):
 
     print("[DEBUG] run_import started")
@@ -144,7 +143,6 @@ async def run_import(message, archive, password=""):
     BATCH = BATCH_SIZE
 
     start_time = time.time()
-    last_update_time = 0
 
     print("[DEBUG] starting stream read")
 
@@ -153,7 +151,7 @@ async def run_import(message, archive, password=""):
 
         processed += 1
 
-        # skip rows already processed
+        # skip rows already processed (resume logic)
         if processed <= start_line:
             continue
 
@@ -166,10 +164,7 @@ async def run_import(message, archive, password=""):
         except Exception as e:
             logging.error(e)
 
-        # -------------------------
-        # Insert batch
-        # -------------------------
-
+        # insert batch
         if len(batch) >= BATCH:
 
             print(f"[DEBUG] inserting batch {len(batch)}")
@@ -180,49 +175,15 @@ async def run_import(message, archive, password=""):
                 batch.clear()
                 save_state(processed)
 
-        # -------------------------
-        # Progress update (every 30 seconds)
-        # -------------------------
-
-        if time.time() - last_update_time >= 30:
-
-            elapsed = time.time() - start_time
-            speed = processed / elapsed if elapsed > 0 else 0
-
-            print(f"[DEBUG] processed={processed} speed={speed:.0f} rows/sec")
-
-            percent = min((processed / 182000000) * 100, 100)
-
-            text = f"""
-📦 Importing dataset
-
-{progress_bar(percent)}
-
-Rows processed: {processed:,}
-⚡ Speed: {speed:,.0f} rows/sec
-"""
-
-            try:
-                await status.edit_text(text)
-
-            except FloodWait as e:
-                print(f"[TELEGRAM] FloodWait {e.value}s — skipping update")
-
-            except Exception as e:
-                print("[TELEGRAM] edit error:", e)
-
-            last_update_time = time.time()
-
-    # -------------------------
-    # Insert remaining rows
-    # -------------------------
-
+    # insert remaining rows
     if batch:
 
         print(f"[DEBUG] inserting final batch {len(batch)}")
 
         insert_rows(batch.copy())
         save_state(processed)
+
+    elapsed = time.time() - start_time
 
     print(f"[DEBUG] import completed, total rows={processed}")
 
@@ -231,14 +192,13 @@ Rows processed: {processed:,}
             f"""
 ✅ Import completed
 
-Total rows processed: {processed:,}
+Rows processed: {processed:,}
+⏱ Time: {elapsed:.0f} seconds
 """
         )
-
-    except FloodWait as e:
-    print(f"[TELEGRAM] FloodWait {e.value}s — skipping update")
-    last_update = processed
-    continue
+    except:
+        pass
+        
 # -------------------------
 # Run bot
 # -------------------------
