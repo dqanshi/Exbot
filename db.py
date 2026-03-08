@@ -40,11 +40,11 @@ def insert_rows(rows):
 
             print(f"[DB] inserting batch {len(rows)}")
 
-client.execute(
-    f"INSERT INTO {CLICKHOUSE_DB}.users VALUES",
-    rows,
-    types_check=True
-)
+            client.execute(
+                f"INSERT INTO {CLICKHOUSE_DB}.users VALUES",
+                rows,
+                types_check=True
+            )
 
             print("[DB] insert success")
 
