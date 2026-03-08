@@ -2,15 +2,8 @@ from clickhouse_driver import Client
 from config import CLICKHOUSE_HOST, CLICKHOUSE_DB
 import time
 
-
-client = Client(host=CLICKHOUSE_HOST)
-
-def get_row_count():
-    result = client.execute(f"SELECT count() FROM {CLICKHOUSE_DB}.users")
-    return result[0][0]
-
-
 client = None
+
 
 def connect():
     global client
@@ -19,6 +12,11 @@ def connect():
 
 
 connect()
+
+
+def get_row_count():
+    result = client.execute(f"SELECT count() FROM {CLICKHOUSE_DB}.users")
+    return result[0][0]
 
 
 def setup_database():
