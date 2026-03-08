@@ -74,12 +74,17 @@ async def dex_cmd(client, message):
     if message.from_user.id != OWNER_ID:
         return
 
+    parts = message.text.split(maxsplit=1)
+
+    password = ""
+    if len(parts) > 1:
+        password = parts[1]
+
     print("[DEBUG] /dex command received")
 
     files = []
 
     for f in os.listdir(DOWNLOAD_DIR):
-
         if f.endswith(".7z") or ".7z." in f:
             files.append(os.path.join(DOWNLOAD_DIR, f))
 
@@ -97,8 +102,7 @@ async def dex_cmd(client, message):
 
     msg = await message.reply_text("⚙ Starting extraction...")
 
-    await run_import(msg, archive)
-
+    await run_import(msg, archive, password)
 
 # -------------------------
 # Import function
