@@ -1,8 +1,5 @@
 def parse_line(line):
-
-    line = line.rstrip("\n")
-
+    line = line.strip()
     if not line:
         return None
-
     return (line,)
