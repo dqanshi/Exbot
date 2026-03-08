@@ -15,7 +15,7 @@ def extract_stream(archive, password=""):
         archive,
         "-so",
         "-bd",
-        "-mmt=on"
+        "-mmt=2"
     ]
 
     if password:
@@ -50,7 +50,7 @@ def extract_to_disk(archive, password=""):
         "-y",
         f"-o{output_dir}",
         "-bd",
-        "-mmt=on"
+        "-mmt=2"
     ]
 
     if password:
