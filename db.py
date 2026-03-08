@@ -33,7 +33,7 @@ def insert_rows(rows):
     global client
 
     if not rows:
-        return
+        return True
 
     while True:
 
@@ -48,14 +48,14 @@ def insert_rows(rows):
 
             print("[DB] insert success")
 
-            break
+            return True
 
         except Exception as e:
 
             print("[DB] connection error:", e)
             print("[DB] reconnecting...")
 
-            time.sleep(5)
+            time.sleep(2)
 
             try:
                 connect()
