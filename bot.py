@@ -79,6 +79,7 @@ async def dex_cmd(client, message):
     files = []
 
     for f in os.listdir(DOWNLOAD_DIR):
+
         if f.endswith(".7z") or ".7z." in f:
             files.append(os.path.join(DOWNLOAD_DIR, f))
 
@@ -98,6 +99,7 @@ async def dex_cmd(client, message):
 
     await run_import(msg, archive)
 
+
 # -------------------------
 # Import function
 # -------------------------
@@ -107,7 +109,7 @@ async def run_import(message, archive, password=""):
     status = await message.reply_text("📦 Extracting archive...")
 
     print("[DEBUG] run_import started")
-    print(f"[DEBUG] archive = {archive}")
+    print("[DEBUG] archive =", archive)
 
     process = extract_stream(archive, password)
 
@@ -121,9 +123,8 @@ async def run_import(message, archive, password=""):
 
     print("[DEBUG] starting stream read")
 
-    line = process.stdout.readline()
-
-    while line:
+    # STREAM READ FIX
+    for line in process.stdout:
 
         processed += 1
 
@@ -135,10 +136,12 @@ async def run_import(message, archive, password=""):
                 batch.append(row)
 
         except Exception as e:
-
             logging.error(e)
 
-        # insert batch
+        # -------------------------
+        # Insert batch
+        # -------------------------
+
         if len(batch) >= BATCH:
 
             print(f"[DEBUG] inserting batch {len(batch)}")
@@ -147,11 +150,13 @@ async def run_import(message, archive, password=""):
 
             batch.clear()
 
-        # update telegram progress
+        # -------------------------
+        # Progress update
+        # -------------------------
+
         if processed - last_update >= 50000:
 
             elapsed = time.time() - start_time
-
             speed = processed / elapsed if elapsed > 0 else 0
 
             print(f"[DEBUG] processed={processed} speed={speed:.0f} rows/sec")
@@ -176,9 +181,10 @@ Rows processed: {processed:,}
 
             last_update = processed
 
-        line = process.stdout.readline()
+    # -------------------------
+    # Insert remaining rows
+    # -------------------------
 
-    # insert remaining
     if batch:
 
         print(f"[DEBUG] inserting final batch {len(batch)}")
