@@ -120,7 +120,6 @@ async def dex_cmd(client, message):
 # -------------------------
 # Import function
 # -------------------------
-
 from state import load_state, save_state
 
 start_line = load_state()
@@ -141,11 +140,11 @@ async def run_import(message, archive, password=""):
 
     batch = []
     processed = 0
-    last_update = 0
 
     BATCH = BATCH_SIZE
 
     start_time = time.time()
+    last_update_time = 0
 
     print("[DEBUG] starting stream read")
 
@@ -179,12 +178,13 @@ async def run_import(message, archive, password=""):
 
             if success:
                 batch.clear()
+                save_state(processed)
 
         # -------------------------
-        # Progress update
+        # Progress update (every 30 seconds)
         # -------------------------
 
-        if processed - last_update >= 50000:
+        if time.time() - last_update_time >= 30:
 
             elapsed = time.time() - start_time
             speed = processed / elapsed if elapsed > 0 else 0
@@ -206,20 +206,12 @@ Rows processed: {processed:,}
                 await status.edit_text(text)
 
             except FloodWait as e:
-
-                print(f"[TELEGRAM] FloodWait {e.value}s")
-
-                await asyncio.sleep(e.value)
-
-                try:
-                    await status.edit_text(text)
-                except:
-                    pass
+                print(f"[TELEGRAM] FloodWait {e.value}s — skipping update")
 
             except Exception as e:
                 print("[TELEGRAM] edit error:", e)
 
-            last_update = processed
+            last_update_time = time.time()
 
     # -------------------------
     # Insert remaining rows
@@ -230,6 +222,7 @@ Rows processed: {processed:,}
         print(f"[DEBUG] inserting final batch {len(batch)}")
 
         insert_rows(batch.copy())
+        save_state(processed)
 
     print(f"[DEBUG] import completed, total rows={processed}")
 
@@ -243,19 +236,7 @@ Total rows processed: {processed:,}
         )
 
     except FloodWait as e:
-
-        await asyncio.sleep(e.value)
-
-        try:
-            await status.edit_text(
-                f"""
-✅ Import completed
-
-Total rows processed: {processed:,}
-"""
-            )
-        except:
-            pass
+        print(f"[TELEGRAM] FloodWait {e.value}s — skipping final update")
 
     except:
         pass
