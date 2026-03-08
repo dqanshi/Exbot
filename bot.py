@@ -175,7 +175,7 @@ for line in iter(process.stdout.readline, ''):
 
             success = insert_rows(batch)
 
-       if success:
+        if success:
             batch.clear()
 
         # -------------------------
