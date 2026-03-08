@@ -5,6 +5,7 @@ import time
 def debug(msg):
     print(f"[DEBUG {time.strftime('%H:%M:%S')}] {msg}")
 
+
 def extract_stream(archive, password=""):
 
     debug(f"Starting stream extraction for: {archive}")
@@ -26,7 +27,7 @@ def extract_stream(archive, password=""):
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=None,      # show errors directly
         text=True,
         bufsize=1
     )
